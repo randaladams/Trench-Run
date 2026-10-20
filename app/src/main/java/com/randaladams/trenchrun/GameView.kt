@@ -27,7 +27,16 @@ import kotlin.math.sign
  *           however is comfortable. "Invert" on the title screen flips it.
  */
 @SuppressLint("ViewConstructor")
-class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable, SensorEventListener {
+class GameView(context: Context, private val host: Host) : SurfaceView(context), SurfaceHolder.Callback, Runnable, SensorEventListener {
+
+    /** Things the game asks of its activity (all called on the UI thread). */
+    interface Host {
+        fun setBannerVisible(visible: Boolean)
+        fun beforeRun(totalRuns: Int, then: () -> Unit)
+        fun exitApp()
+    }
+
+    private var bannerShown: Boolean? = null
 
     companion object {
         private const val RAD2DEG = 57.29578f
@@ -145,6 +154,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 try { holder.unlockCanvasAndPost(canvas) } catch (_: Exception) {}
             }
 
+            // banner ad: free edition, menu screens only (never during a run)
+            val wantBanner = !game.pro && game.state != Game.State.PLAYING
+            if (wantBanner != bannerShown) {
+                bannerShown = wantBanner
+                post { host.setBannerVisible(wantBanner) }
+            }
+
             if (game.consumeHaptic()) post { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) }
         }
     }
@@ -254,22 +270,25 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private fun handleTap(x: Float, y: Float) {
         synchronized(game) {
             when (game.state) {
-                Game.State.TITLE -> {
-                    if (renderer.toggleRect.contains(x, y)) {
-                        game.invertPitch = !game.invertPitch
-                    } else if (renderer.soundRect.contains(x, y)) {
-                        toggleSound()
-                    } else if (renderer.scoresRect.contains(x, y)) {
-                        game.showScores()
-                    } else if (renderer.zenRect.contains(x, y)) {
-                        if (game.pro) { calibrate(); game.start(asZen = true) }
+                Game.State.TITLE -> when {
+                    renderer.startRect.contains(x, y) -> beginRun(zen = game.zenSelected && game.pro)
+                    renderer.tutorialRect.contains(x, y) -> { calibrate(); game.start(asTutorial = true) }
+                    renderer.zenRect.contains(x, y) -> {
+                        if (game.pro) game.zenSelected = !game.zenSelected
                         else game.showMessage("ZEN MODE IS PART OF TRENCH RUN PRO", 2.5f)
-                    } else if (renderer.tutorialRect.contains(x, y)) {
-                        calibrate()
-                        game.start(asTutorial = true)
-                    } else {
-                        calibrate()
-                        game.start()
+                    }
+                    renderer.scoresRect.contains(x, y) -> game.showScores()
+                    renderer.toggleRect.contains(x, y) -> { game.invertPitch = !game.invertPitch }
+                    renderer.soundRect.contains(x, y) -> toggleSound()
+                    renderer.exitRect.contains(x, y) -> host.exitApp()
+                    BuildConfig.DEBUG && renderer.editionRect.contains(x, y) -> {
+                        // hidden tester switch: tap the FREE/PRO EDITION label 5 times
+                        val now = System.currentTimeMillis()
+                        if (now - versionTapAt > 1500) versionTaps = 0
+                        versionTapAt = now
+                        versionTaps++
+                        if (versionTaps >= 5) { versionTaps = 0; game.toggleEdition() }
+                        else if (versionTaps >= 2) game.showMessage("${5 - versionTaps} more taps to switch edition", 1f)
                     }
                 }
                 Game.State.PLAYING -> when {
@@ -281,20 +300,22 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                         if (renderer.confirmYesRect.contains(x, y)) game.clearScores()
                         else if (renderer.confirmNoRect.contains(x, y)) { game.confirmClear = false }
                     }
-                    BuildConfig.DEBUG && renderer.versionRect.contains(x, y) -> {
-                        val now = System.currentTimeMillis()
-                        if (now - versionTapAt > 1500) versionTaps = 0
-                        versionTapAt = now
-                        versionTaps++
-                        if (versionTaps >= 7) { versionTaps = 0; game.toggleEdition() }
-                    }
                     renderer.backRect.contains(x, y) -> game.backToTitle()
                     renderer.clearRect.contains(x, y) -> { game.confirmClear = true }
                 }
-                Game.State.GAME_OVER -> if (game.stateTime > 1.2f) { calibrate(); game.start() }
+                Game.State.GAME_OVER -> if (game.stateTime > 1.2f) {
+                    if (renderer.againRect.contains(x, y)) beginRun(zen = false)
+                    else if (renderer.menuRect.contains(x, y)) game.endRun()
+                }
             }
             Unit
         }
+    }
+
+    /** Starts a scored run, showing a full-screen ad first if one is due (free edition only). */
+    private fun beginRun(zen: Boolean) {
+        val go = { synchronized(game) { calibrate(); game.start(asZen = zen) } }
+        if (game.pro || zen) go() else host.beforeRun(game.book.runs) { go() }
     }
 
     // -------------------------------------------------------------- keyboard
@@ -308,7 +329,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_DPAD_DOWN -> keyY = -1f
             KeyEvent.KEYCODE_SPACE -> { game.firing = true; return true }
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_Z -> { game.tractorHeld = true; return true }
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> { handleTap(-1f, -1f); return true }
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> {
+                if (game.state == Game.State.TITLE || game.state == Game.State.GAME_OVER) beginRun(zen = false) else handleTap(-1f, -1f)
+                return true
+            }
             else -> return super.onKeyDown(keyCode, event)
         }
         keyMode = true

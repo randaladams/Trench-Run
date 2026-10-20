@@ -48,7 +48,7 @@ class Game(private val prefs: SharedPreferences) {
         const val SLOW_DURATION = 12f    // seconds
         const val SLOW_ROLLBACK = 900f   // slow-mo also permanently rolls the speed ramp back this far
         const val LASER_DAMAGE = 30f     // enemy laser hit
-        const val FIRE_ENERGY_PER_SEC = 0.8f  // tiny shield cost for holding fire
+        const val FIRE_ENERGY_PER_SEC = 3f    // shield cost per second of continuous fire
         const val ZEN_SPEED = 32f
         const val HEAT_PER_SEC = 44f     // heat added per second of continuous fire (same at every laser level)
         const val COOL_PER_SEC = 20f     // heat lost per second (always cooling)
@@ -120,6 +120,11 @@ class Game(private val prefs: SharedPreferences) {
     var zen = false
         private set
     val pro get() = book.pro
+
+    /** Title-screen Zen switch (Pro only); START uses it. */
+    var zenSelected = prefs.getBoolean("zenSelected", false)
+        get() = field && book.pro
+        set(v) { field = v; prefs.edit().putBoolean("zenSelected", v).apply() }
     var time = 0f
     var stateTime = 0f
 
@@ -207,7 +212,7 @@ class Game(private val prefs: SharedPreferences) {
 
     /** Leave the current run (pause menu "End game"). Keeps the high score, returns to the title. */
     fun endRun() {
-        if (!tutorial && distance > 30f) finishRun()
+        if (state == State.PLAYING && !tutorial && distance > 30f) finishRun()   // game over already saved it
         entities.clear(); bolts.clear(); enemyBolts.clear()
         tractorOn = false; firing = false; tractorHeld = false
         tutorial = false; zen = false

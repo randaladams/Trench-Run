@@ -71,8 +71,11 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val confirmYesRect = RectF()
     val confirmNoRect = RectF()
     val zenRect = RectF()
-    /** Hidden edition toggle: tap the version line 7 times (debug builds only). */
-    val versionRect = RectF()
+    val startRect = RectF()
+    val exitRect = RectF()
+    val editionRect = RectF()
+    val againRect = RectF()
+    val menuRect = RectF()
     private val dateFmt = java.text.SimpleDateFormat("MMM d  h:mm a", java.util.Locale.US)
     private fun versionLine(g: Game) =
         "Trench Run ${if (g.pro) "PRO" else "FREE"}  version ${BuildConfig.VERSION_NAME}  (build ${BuildConfig.VERSION_CODE - 100})"
@@ -843,73 +846,90 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         }
     }
 
+    /** Space kept clear at the bottom of menu screens for the banner ad (free edition). */
+    private fun bannerSpace(g: Game) = if (g.pro) 0f else dp(58f)
+
+    /** Rounded button whose label shrinks to fit. */
+    private fun bigButton(c: Canvas, rc: RectF, label: String, color: Int, maxSize: Float, filled: Float = 0.2f) {
+        fill.color = withAlpha(color, filled)
+        c.drawRoundRect(rc, dp(12f), dp(12f), fill)
+        line.color = color; line.strokeWidth = dp(2.5f)
+        c.drawRoundRect(rc, dp(12f), dp(12f), line)
+        txt.textSize = maxSize
+        val fit = min(maxSize, maxSize * (rc.width() * 0.88f) / max(1f, txt.measureText(label)))
+        text(c, label, rc.centerX(), rc.centerY() + fit * 0.36f, fit, color)
+    }
+
     private fun drawTitle(c: Canvas, g: Game) {
         dim(c, 0.5f)
         val ts = max(dp(11f), h / 28f)
-        text(c, "TRENCH RUN", w / 2f, h * 0.17f, ts * 2.6f, 0xFFFFD27A.toInt())
+        val gold = 0xFFFFD27A.toInt()
+        text(c, "TRENCH RUN", w / 2f, h * 0.13f, ts * 2.4f, gold)
+        val edLabel = if (g.pro) "PRO EDITION" else "FREE EDITION"
+        val edY = h * 0.13f + ts * 1.05f
+        text(c, edLabel, w / 2f, edY, ts * 0.62f, 0x99FFD27A.toInt())
+        txt.textSize = ts * 0.62f
+        val ew = txt.measureText(edLabel)
+        editionRect.set(w / 2f - ew / 2f - dp(16f), edY - ts * 0.9f, w / 2f + ew / 2f + dp(16f), edY + ts * 0.5f)
+        if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w - dp(16f), dp(16f) + ts * 0.8f, ts * 0.7f, 0xCCFFD27A.toInt(), Paint.Align.RIGHT)
+
         val lines = arrayOf(
             "TILT LEFT / RIGHT ........ steer",
             if (g.invertPitch) "TILT FORWARD / BACK ...... climb / dive"
             else "TILT FORWARD / BACK ...... dive / climb",
             "HOLD LEFT SIDE ........... fire lasers",
-            "HOLD RIGHT SIDE .......... tractor beam: pulls orbs in (uses energy)"
+            "HOLD RIGHT SIDE .......... tractor beam (uses energy)"
         )
-        var y = h * 0.3f
-        for (l in lines) { text(c, l, w / 2f, y, ts * 0.74f, 0xFFE6ECF5.toInt()); y += ts * 1.0f }
+        var y = h * 0.245f
+        for (l in lines) { text(c, l, w / 2f, y, ts * 0.68f, 0xFFE6ECF5.toInt()); y += ts * 0.9f }
 
         // legend: what is good and what is dangerous
-        y += ts * 0.3f
-        val r = ts * 0.45f
+        y += ts * 0.2f
+        val r = ts * 0.4f
         val items = arrayOf("SHIELD +" to SHIELD, "LASER UPGRADE" to WEAPON, "SLOW-MO" to SLOW, "RED = DANGER" to HAZ_RED)
-        txt.textSize = ts * 0.72f
+        txt.textSize = ts * 0.66f
         val itemW = items.map { txt.measureText(it.first) + r * 3.2f }
-        val spacing = dp(22f)
+        val spacing = dp(20f)
         var lx = w / 2f - (itemW.sum() + spacing * (items.size - 1)) / 2f
         for ((i, it) in items.withIndex()) {
             fill.color = it.second
             if (i == items.size - 1) c.drawRect(lx, y - r * 1.6f, lx + r * 2f, y + r * 0.4f, fill)
             else c.drawCircle(lx + r, y - r * 0.6f, r, fill)
-            text(c, it.first, lx + r * 3.2f, y, ts * 0.72f, it.second, Paint.Align.LEFT)
+            text(c, it.first, lx + r * 3.2f, y, ts * 0.66f, it.second, Paint.Align.LEFT)
             lx += itemW[i] + spacing
         }
-        y += ts * 1.5f
 
-        // buttons: row 1 = modes and scores, row 2 = settings
-        txt.textSize = ts * 0.72f
-        val gold = 0xFFFFD27A.toInt()
-        val zenCol = if (g.pro) 0xFF9FE8D0.toInt() else 0x88FFFFFF.toInt()
-        val row1 = arrayOf("TUTORIAL", if (g.pro) "ZEN MODE" else "ZEN MODE  (PRO)", "SCORES & BADGES")
-        val r1w = row1.map { txt.measureText(it) + dp(36f) }
-        val gap = dp(14f)
-        var bx = w / 2f - (r1w.sum() + gap * 2) / 2f
-        val rects1 = arrayOf(tutorialRect, zenRect, scoresRect)
-        val cols1 = intArrayOf(gold, zenCol, gold)
-        for (i in 0..2) {
-            rects1[i].set(bx, y - ts, bx + r1w[i], y + ts * 0.5f)
-            fill.color = withAlpha(cols1[i], 0.22f); c.drawRoundRect(rects1[i], dp(8f), dp(8f), fill)
-            line.color = cols1[i]; line.strokeWidth = dp(2f); c.drawRoundRect(rects1[i], dp(8f), dp(8f), line)
-            text(c, row1[i], rects1[i].centerX(), y, ts * 0.72f, cols1[i])
-            bx += r1w[i] + gap
+        // big START button
+        y += ts * 0.9f
+        val sw = w * 0.3f; val sh = ts * 2.3f
+        startRect.set(w / 2f - sw / 2f, y, w / 2f + sw / 2f, y + sh)
+        val pulse = 0.2f + 0.1f * sin(g.time * 3f)
+        val zenOn = g.zenSelected
+        bigButton(c, startRect, if (zenOn) "START ZEN" else "START", if (zenOn) 0xFF9FE8D0.toInt() else gold, ts * 1.3f, pulse)
+        y += sh + ts * 0.75f
+        text(c, "Hold your phone the way you'll play, then press START", w / 2f, y, ts * 0.6f, 0xAAFFFFFF.toInt())
+
+        // two rows of equal-size buttons
+        val bw = w * 0.23f; val bh = ts * 1.85f; val gap = dp(16f)
+        val left = w / 2f - (bw * 3 + gap * 2) / 2f
+        y += ts * 0.6f
+        val zenLabel = if (!g.pro) "ZEN MODE (PRO)" else if (zenOn) "ZEN MODE: ON" else "ZEN MODE: OFF"
+        val zenCol = if (!g.pro) 0x88FFFFFF.toInt() else 0xFF9FE8D0.toInt()
+        val row1 = arrayOf(tutorialRect to ("TUTORIAL" to gold), zenRect to (zenLabel to zenCol), scoresRect to ("SCORES & BADGES" to gold))
+        for ((i, item) in row1.withIndex()) {
+            item.first.set(left + i * (bw + gap), y, left + i * (bw + gap) + bw, y + bh)
+            bigButton(c, item.first, item.second.first, item.second.second, ts * 0.8f, if (item.first === zenRect && zenOn) 0.35f else 0.18f)
         }
-        y += ts * 2f
-        val pitchLabel = if (g.invertPitch) "PITCH: FORWARD = CLIMB" else "PITCH: FORWARD = DIVE"
+        y += bh + gap
+        val pitchLabel = if (g.invertPitch) "PITCH: FWD = CLIMB" else "PITCH: FWD = DIVE"
         val soundLabel = if (g.soundOn) "SOUND: ON" else "SOUND: OFF"
-        val pw = txt.measureText(pitchLabel) + dp(28f)
-        val sw = txt.measureText(soundLabel) + dp(28f)
-        val left = w / 2f - (pw + sw + gap) / 2f
-        toggleRect.set(left, y - ts, left + pw, y + ts * 0.5f)
-        soundRect.set(toggleRect.right + gap, y - ts, toggleRect.right + gap + sw, y + ts * 0.5f)
-        line.color = HUD; line.strokeWidth = dp(1.5f)
-        c.drawRoundRect(toggleRect, dp(8f), dp(8f), line)
-        c.drawRoundRect(soundRect, dp(8f), dp(8f), line)
-        text(c, pitchLabel, toggleRect.centerX(), y, ts * 0.72f, HUD)
-        text(c, soundLabel, soundRect.centerX(), y, ts * 0.72f, HUD)
-        if (g.messageTime > 0f) text(c, g.message, w / 2f, y + ts * 1.5f, ts * 0.8f, withAlpha(gold, min(1f, g.messageTime * 2f)))
-        text(c, if (g.pro) "PRO EDITION" else "FREE EDITION", w / 2f, h * 0.17f + ts * 1.1f, ts * 0.6f, 0x99FFD27A.toInt())
-
-        val blink = 0.6f + 0.4f * sin(g.time * 4f)
-        text(c, "Hold your phone the way you want to play, then tap to launch", w / 2f, h * 0.87f, ts * 0.8f, withAlpha(0xFFFFFFFF.toInt(), blink))
-        if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w / 2f, h * 0.94f, ts * 0.7f, 0xBBFFD27A.toInt())
+        val row2 = arrayOf(toggleRect to (pitchLabel to HUD), soundRect to (soundLabel to HUD), exitRect to ("EXIT GAME" to DANGER))
+        for ((i, item) in row2.withIndex()) {
+            item.first.set(left + i * (bw + gap), y, left + i * (bw + gap) + bw, y + bh)
+            bigButton(c, item.first, item.second.first, item.second.second, ts * 0.8f, 0.12f)
+        }
+        y += bh
+        if (g.messageTime > 0f) text(c, g.message, w / 2f, y + ts * 1.1f, ts * 0.75f, withAlpha(gold, min(1f, g.messageTime * 2f)))
         text(c, buildLabel, w - dp(10f), h - dp(8f), ts * 0.55f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
     }
 
@@ -959,7 +979,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val colDist = lx + (rx - lx) * 0.58f
         val colKills = lx + (rx - lx) * 0.74f
         var y = pad + ts * 3.2f
-        val rowH = (h - y - ts * 5.2f) / 21f
+        val rowH = (h - bannerSpace(g) - y - ts * 5.2f) / 21f
         val small = min(ts * 0.85f, rowH * 0.78f)
         text(c, "#", lx, y, small, 0x99FFFFFF.toInt(), Paint.Align.LEFT)
         text(c, "WHEN", lx + small * 2f, y, small, 0x99FFFFFF.toInt(), Paint.Align.LEFT)
@@ -998,7 +1018,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         }
         // ---- right: badge grid 4 x 4
         val gx0 = w * 0.51f; val gx1 = w - pad
-        val gy0 = pad + ts * 2.8f; val gy1 = h - ts * 5f
+        val gy0 = pad + ts * 2.8f; val gy1 = h - bannerSpace(g) - ts * 5f
         val cols = 5; val rows = (ScoreBook.BADGES.size + cols - 1) / cols
         val cellW = (gx1 - gx0) / cols; val cellH = (gy1 - gy0) / rows
         val mr = min(cellW, cellH) * 0.2f
@@ -1028,7 +1048,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         }
 
         // ---- bottom: stats, buttons, version
-        val by = h - ts * 3.6f
+        val by = h - bannerSpace(g) - ts * 3.6f
         text(c, "Runs: %,d   Drones: %,d   Lasers shot down: %,d".format(book.runs, book.totalKills, book.laserKills) +
             (if (g.pro && book.zenBest > 0) "   Zen best: %,d m".format(book.zenBest) else ""), w * 0.25f, by - ts * 0.4f, ts * 0.75f, 0x99FFFFFF.toInt())
         val bw = max(dp(120f), w * 0.13f); val bh = ts * 1.9f
@@ -1038,8 +1058,6 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         button(c, clearRect, "CLEAR ALL", DANGER, ts * 0.85f)
         val vl = versionLine(g)
         txt.textSize = ts * 0.6f
-        val vw = txt.measureText(vl)
-        versionRect.set(w - pad - vw - dp(10f), h - dp(8f) - ts, w, h)
         text(c, vl, w - pad, h - dp(8f), ts * 0.6f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
         if (g.messageTime > 0f && !g.confirmClear)
             text(c, g.message, w / 2f, by - ts * 1.6f, ts * 0.85f, withAlpha(0xFFFFD27A.toInt(), min(1f, g.messageTime * 2f)))
@@ -1168,8 +1186,12 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         if (g.newHigh) text(c, "NEW HIGH SCORE!", w / 2f, h * 0.64f, ts, 0xFFFFD27A.toInt())
         else text(c, "HIGH SCORE  %,d".format(g.highScore), w / 2f, h * 0.64f, ts * 0.8f, 0xBBFFD27A.toInt())
         if (g.stateTime > 1.2f) {
-            val blink = 0.6f + 0.4f * sin(g.time * 4f)
-            text(c, "Tap to fly again", w / 2f, h * 0.8f, ts, withAlpha(0xFFFFFFFF.toInt(), blink))
-        }
+            val bw = w * 0.22f; val bh = ts * 1.9f; val gap = dp(20f)
+            val top = min(h * 0.73f, h - bannerSpace(g) - bh - dp(14f))
+            againRect.set(w / 2f - bw - gap / 2f, top, w / 2f - gap / 2f, top + bh)
+            menuRect.set(w / 2f + gap / 2f, top, w / 2f + gap / 2f + bw, top + bh)
+            bigButton(c, againRect, "FLY AGAIN", 0xFFFFD27A.toInt(), ts * 0.9f, 0.25f)
+            bigButton(c, menuRect, "MAIN MENU", HUD, ts * 0.9f, 0.15f)
+        } else { againRect.setEmpty(); menuRect.setEmpty() }
     }
 }

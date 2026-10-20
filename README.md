@@ -19,14 +19,16 @@ Open that link on your Android phone, then open the downloaded file to install. 
 
 New to the game? Tap **TUTORIAL** on the title screen for a guided training run where you can't die.
 
-- Hold the phone however is comfortable, then tap to launch. That angle becomes "level".
+**Home screen:** a big **START** button launches a run. Below it: Tutorial, Zen mode on/off (Pro), Scores & Badges, pitch direction, sound, and **Exit game**. After a crash, choose **Fly again** or **Main menu**.
+
+- Hold the phone however is comfortable, then press START. That angle becomes "level".
 - **Color code: red and striped = danger. Glowing cyan and green orbs = good.**
 - **Shield energy** is your lifeline and works automatically. Each crash costs 50 energy. Energy rebuilds very slowly (0.3/s, paused while the tractor beam is on) and +2 for every drone you shoot down.
 - The **tractor beam** reaches about 75 m ahead and drags any orbs in range toward your ship, at 9 energy per second. Use it in short bursts to grab orbs you'd otherwise miss.
 - **If you hit something with no shield energy left, the run is over.**
 - **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot). **Violet hourglass orbs** slow the trench to 45% speed for 12 seconds and also permanently knock the speed ramp back a notch. Orbs appear on timers (shield about every 14 s, slow-mo about every 22 s, lasers about every 30 s), so flying faster doesn't earn you more of them.
 - **Wall turrets** appear now and then. Their muzzle glows and whines as you approach, then fires one red laser at where you are. Dodge it or shoot it down (+150 points). It does 30 damage if it hits. You can hear which wall it's on.
-- Firing costs a tiny bit of shield energy (about 0.8 per second of continuous fire).
+- Firing costs shield energy: about 3 per second of continuous fire.
 - When shield energy drops below 25 you hear one warning beep and a spoken "Shield critical" (using the phone's text-to-speech voice), and the screen edge pulses red. At zero you hear "Shields down!"
 - **Laser heat:** firing builds heat (shown on the HEAT gauge under the shield bar). Holding fire fills it in about 4 seconds; then the lasers overheat and lock for about 3 seconds until they cool. Fire in bursts to stay below the limit.
 - Red drones can be shot down for 100 points each. The crosshair turns red when one is in your line of fire.
@@ -46,8 +48,18 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 | Main game, tutorial, scoreboard | Yes | Yes |
 | Badges | 9 | All 20 |
 | Zen mode (steady speed, no turrets, crashes don't hurt) | No | Yes |
+| Ads | Banner on menu screens, full-screen ad between some runs | None |
 
-**Test switch:** on the scoreboard, tap the version line in the bottom-right corner 7 times quickly to flip between Free and Pro. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
+**Test switch:** on the home screen, tap the **FREE EDITION** / **PRO EDITION** label under the title 5 times quickly to flip editions. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
+
+## Ads (AdMob)
+
+Free edition only:
+- A banner at the bottom of the home screen, scoreboard and game-over screen. Never during a run.
+- A full-screen ad before a new run, at most every 3 runs and at least 2 minutes apart, and never in a player's first 3 runs. Tuning is at the top of `Ads.kt`.
+- A privacy consent prompt appears where the law requires it (Google's UMP SDK).
+
+The ad ids in `app/build.gradle.kts` are Google's public **test** ids, so test ads show and tapping them is safe. Before publishing: create an AdMob account and app, put your real app id and ad unit ids in `app/build.gradle.kts`, add an `app-ads.txt` file to your developer website, and fill in the ads and Data safety sections in the Play Console.
 
 Emulator testing: arrow keys steer, Space fires, Shift or Z holds the tractor beam, Enter launches.
 
@@ -63,6 +75,7 @@ Plain Kotlin + Android Canvas, no game engine or extra libraries.
 | `Entities.kt` | Obstacle, laser bolt and particle data. |
 | `Textures.kt` | Procedurally painted wall and floor textures (plating, pipes, vents, lights). |
 | `ScoreBook.kt` | Saved scoreboard (last 19 runs + best) and badge definitions. |
+| `Ads.kt` | AdMob banner and between-run ads, consent prompt, frequency limits. |
 | `Sound.kt` | Synthesized sound effects and engine/shield hum loops. |
 
 Build locally with Android Studio, or `./gradlew assembleDebug`.

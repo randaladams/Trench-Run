@@ -15,6 +15,12 @@ android {
         val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
         versionCode = 100 + buildNumber
         versionName = "0.2.$buildNumber"
+
+        // ---- AdMob. These are Google's public TEST ids, safe to click during development.
+        // Before publishing, replace them with the ids from your own AdMob account.
+        manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
+        buildConfigField("String", "AD_BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
+        buildConfigField("String", "AD_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
     }
 
     // A fixed debug key is committed so every CI build installs over the previous one
@@ -48,4 +54,9 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    implementation("com.google.android.gms:play-services-ads:23.6.0")
+    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
 }
