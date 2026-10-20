@@ -87,6 +87,8 @@ class MainActivity : Activity(), GameView.Host {
 
     override fun exitApp() = finishAndRemoveTask()
 
+    override fun showRewarded(then: (Boolean) -> Unit) = ads.showRewarded(then)
+
     private fun hideSystemUi() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.setDecorFitsSystemWindows(false)

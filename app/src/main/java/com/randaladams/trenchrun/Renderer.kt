@@ -77,6 +77,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val exitRect = RectF()
     val editionRect = RectF()
     val againRect = RectF()
+    val continueRect = RectF()
+    val declineRect = RectF()
     val menuRect = RectF()
     private val dateFmt = java.text.SimpleDateFormat("MMM d  h:mm a", java.util.Locale.US)
     private fun versionLine(g: Game) =
@@ -1132,6 +1134,39 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         }
     }
 
+    /** "Continue?" screen with a countdown ring: one continue per run. */
+    private fun drawContinueOffer(c: Canvas, g: Game, ts: Float) {
+        againRect.setEmpty(); menuRect.setEmpty()
+        val gold = 0xFFFFD27A.toInt()
+        text(c, "SHIP DESTROYED", w / 2f, h * 0.2f, ts * 1.6f, DANGER)
+        text(c, "SCORE  %,d     %,d m".format(g.score, g.distance.toInt()), w / 2f, h * 0.3f, ts * 0.9f, 0xDDFFFFFF.toInt())
+
+        // countdown ring
+        val cx = w / 2f; val cy = h * 0.45f; val r = ts * 1.6f
+        line.color = 0x33FFFFFF; line.strokeWidth = dp(6f)
+        c.drawCircle(cx, cy, r, line)
+        line.color = gold
+        rect.set(cx - r, cy - r, cx + r, cy + r)
+        c.drawArc(rect, -90f, 360f * (g.offerTime / Game.CONTINUE_SECONDS), false, line)
+        text(c, "${kotlin.math.ceil(g.offerTime).toInt()}", cx, cy + ts * 0.55f, ts * 1.5f, gold)
+        text(c, "CONTINUE?", cx, cy + r + ts * 1.3f, ts * 1.2f, gold)
+        text(c, "Keep your score and come back with ${Game.CONTINUE_ENERGY.toInt()} shield.  One continue per run.",
+            cx, cy + r + ts * 2.2f, ts * 0.6f, 0xBBFFFFFF.toInt())
+
+        val bw = w * 0.26f; val bh = ts * 1.9f; val gap = dp(24f)
+        val top = min(cy + r + ts * 3f, h - bannerSpace(g) - bh - dp(12f))
+        continueRect.set(w / 2f - bw - gap / 2f, top, w / 2f - gap / 2f, top + bh)
+        declineRect.set(w / 2f + gap / 2f, top, w / 2f + gap / 2f + bw, top + bh)
+        val label = when {
+            g.offerPending -> "LOADING AD..."
+            g.pro -> "CONTINUE  (PRO)"
+            else -> "WATCH AD & CONTINUE"
+        }
+        bigButton(c, continueRect, label, gold, ts * 0.85f, 0.3f + 0.1f * sin(g.time * 5f))
+        bigButton(c, declineRect, "NO THANKS", HUD, ts * 0.85f, 0.12f)
+        if (g.messageTime > 0f) text(c, g.message, w / 2f, top - ts * 0.4f, ts * 0.7f, withAlpha(DANGER, min(1f, g.messageTime * 2f)))
+    }
+
     /** "Badge earned" banner that slides in at the top. */
     private fun drawBadgeToast(c: Canvas, g: Game) {
         val b = g.toastBadge ?: return
@@ -1233,6 +1268,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         dim(c, min(0.6f, g.stateTime * 0.5f))
         if (g.stateTime < 0.6f) return
         val ts = max(dp(12f), h / 26f)
+        if (g.offerActive) { drawContinueOffer(c, g, ts); return }
+        continueRect.setEmpty(); declineRect.setEmpty()
         text(c, "SHIP DESTROYED", w / 2f, h * 0.3f, ts * 2f, DANGER)
         text(c, "SCORE  %,d".format(g.score), w / 2f, h * 0.45f, ts * 1.3f, 0xFFFFFFFF.toInt())
         text(c, "%,d m flown   |   %d drones destroyed".format(g.distance.toInt(), g.kills), w / 2f, h * 0.54f, ts * 0.8f, 0xCCFFFFFF.toInt())

@@ -34,6 +34,7 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
         fun setBannerVisible(visible: Boolean)
         fun beforeRun(totalRuns: Int, then: () -> Unit)
         fun exitApp()
+        fun showRewarded(then: (Boolean) -> Unit)
     }
 
     private var bannerShown: Boolean? = null
@@ -327,12 +328,30 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                     renderer.backRect.contains(x, y) -> game.backToTitle()
                     renderer.clearRect.contains(x, y) -> { game.confirmClear = true }
                 }
-                Game.State.GAME_OVER -> if (game.stateTime > 1.2f) {
+                Game.State.GAME_OVER -> if (game.offerActive) {
+                    if (game.offerPending) Unit
+                    else if (renderer.continueRect.contains(x, y)) acceptContinue()
+                    else if (renderer.declineRect.contains(x, y)) game.declineContinue()
+                } else if (game.stateTime > 1.2f) {
                     if (renderer.againRect.contains(x, y)) beginRun(zen = false)
                     else if (renderer.menuRect.contains(x, y)) game.endRun()
                 }
             }
             Unit
+        }
+    }
+
+    /** One-time continue: Pro continues right away, Free watches a rewarded ad first. */
+    private fun acceptContinue() {
+        val revive = { synchronized(game) { calibrate(); game.revive() } }
+        if (game.pro) { revive(); return }
+        game.offerPending = true
+        host.showRewarded { watched ->
+            synchronized(game) {
+                game.offerPending = false
+                if (watched) { calibrate(); game.revive() }
+                else game.showMessage("WATCH THE WHOLE AD TO CONTINUE", 2f)
+            }
         }
     }
 

@@ -50,6 +50,8 @@ class Game(private val prefs: SharedPreferences) {
         const val LASER_DAMAGE = 30f     // enemy laser hit
         const val FIRE_ENERGY_PER_SEC = 3f    // shield cost per second of continuous fire
         const val ZEN_SPEED = 32f
+        const val CONTINUE_SECONDS = 8f   // how long the "Continue?" offer stays up
+        const val CONTINUE_ENERGY = 50f   // shield after continuing
         const val HEAT_PER_SEC = 44f     // heat added per second of continuous fire (same at every laser level)
         const val COOL_PER_SEC = 20f     // heat lost per second (always cooling)
         const val OVERHEAT_RESUME = 35f  // after overheating, lasers unlock once heat falls below this
@@ -114,6 +116,15 @@ class Game(private val prefs: SharedPreferences) {
     private var overheatedThisRun = false
     private var hitZero = false
     private var crashes = 0
+
+    // ---- one continue per run
+    private var continueUsed = false
+    /** Seconds left on the "Continue?" offer; 0 when no offer is showing. */
+    var offerTime = 0f
+        private set
+    /** True while the player is watching the ad for a continue (pauses the countdown). */
+    var offerPending = false
+    val offerActive get() = state == State.GAME_OVER && offerTime > 0f
     private var laserKillsRun = 0
     private var tractorUsed = false
 
@@ -196,6 +207,7 @@ class Game(private val prefs: SharedPreferences) {
         lastCrashAt = 0f; tractorCatches = 0; slowCount = 0; turretDodged = 0
         overheatedThisRun = false; hitZero = false; confirmClear = false
         laserKillsRun = 0; tractorUsed = false; crashes = 0
+        continueUsed = false; offerTime = 0f; offerPending = false
         if (zen) progress = 900f
         kills = 0; bonus = 0; score = 0
         invuln = 1.5f; hitFlash = 0f; shake = 0f
@@ -231,7 +243,38 @@ class Game(private val prefs: SharedPreferences) {
         shake = 1.6f
         hapticPending = true
         play(Sfx.GAME_OVER)
+        if (!continueUsed && !zen && !tutorial) {
+            offerTime = CONTINUE_SECONDS     // run is saved only if the player declines
+            offerPending = false
+        } else finishRun()
+    }
+
+    /** Player said no (or the timer ran out): save the run and show the normal game-over screen. */
+    fun declineContinue() {
+        if (!offerActive) return
+        offerTime = 0f; offerPending = false
+        stateTime = 0.7f
         finishRun()
+    }
+
+    /** Bring the ship back exactly where it crashed, with some shield and a moment of safety. */
+    fun revive() {
+        if (state != State.GAME_OVER || continueUsed) return
+        continueUsed = true
+        offerTime = 0f; offerPending = false
+        // clear anything right in front of the ship so the player isn't killed again instantly
+        entities.removeAll { !it.isPickup && it.z0 < 70f }
+        enemyBolts.clear()
+        energy = CONTINUE_ENERGY
+        heat = 0f; overheated = false
+        criticalWarned = false; depletedWarned = false
+        invuln = 3f; hitFlash = 0f; shieldFlash = 1f
+        firing = false; tractorHeld = false
+        state = State.PLAYING
+        stateTime = 0f
+        paused = false
+        play(Sfx.START)
+        showMessage("BACK IN THE FIGHT!", 2f)
     }
 
     /** Saves the run to the scoreboard and checks end-of-run badges. */
@@ -330,6 +373,10 @@ class Game(private val prefs: SharedPreferences) {
     }
 
     private fun updateGameOver(dt: Float) {
+        if (offerTime > 0f && !offerPending) {
+            offerTime = max(0f, offerTime - dt)
+            if (offerTime <= 0f) { offerTime = 0.01f; declineContinue() }
+        }
         speed = max(0f, speed - 35f * dt)
         moveWorld(speed * dt, dt)
         moveBolts(dt, speed * dt)

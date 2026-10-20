@@ -9,11 +9,13 @@ plugins {
 val REAL_APP_ID = ""            // looks like ca-app-pub-1234567890123456~1234567890
 val REAL_BANNER_ID = ""         // looks like ca-app-pub-1234567890123456/1234567890
 val REAL_INTERSTITIAL_ID = ""   // looks like ca-app-pub-1234567890123456/1234567890
+val REAL_REWARDED_ID = ""       // looks like ca-app-pub-1234567890123456/1234567890
 
 // Google's public test ids (always safe to show and tap).
 val TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
 val TEST_BANNER_ID = "ca-app-pub-3940256099942544/6300978111"
 val TEST_INTERSTITIAL_ID = "ca-app-pub-3940256099942544/1033173712"
+val TEST_REWARDED_ID = "ca-app-pub-3940256099942544/5224354917"
 
 android {
     namespace = "com.randaladams.trenchrun"
@@ -49,6 +51,7 @@ android {
             manifestPlaceholders["admobAppId"] = TEST_APP_ID
             buildConfigField("String", "AD_BANNER_ID", "\"$TEST_BANNER_ID\"")
             buildConfigField("String", "AD_INTERSTITIAL_ID", "\"$TEST_INTERSTITIAL_ID\"")
+            buildConfigField("String", "AD_REWARDED_ID", "\"$TEST_REWARDED_ID\"")
         }
         // The Play Store build uses your real AdMob ids (falls back to test ids until they're filled in).
         release {
@@ -56,6 +59,7 @@ android {
             manifestPlaceholders["admobAppId"] = REAL_APP_ID.ifEmpty { TEST_APP_ID }
             buildConfigField("String", "AD_BANNER_ID", "\"${REAL_BANNER_ID.ifEmpty { TEST_BANNER_ID }}\"")
             buildConfigField("String", "AD_INTERSTITIAL_ID", "\"${REAL_INTERSTITIAL_ID.ifEmpty { TEST_INTERSTITIAL_ID }}\"")
+            buildConfigField("String", "AD_REWARDED_ID", "\"${REAL_REWARDED_ID.ifEmpty { TEST_REWARDED_ID }}\"")
         }
     }
 

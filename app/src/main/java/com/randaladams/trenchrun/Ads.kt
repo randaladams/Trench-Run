@@ -14,6 +14,8 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
 
@@ -35,6 +37,7 @@ class Ads(private val activity: Activity, private val prefs: SharedPreferences) 
     private var started = false
     private var banner: AdView? = null
     private var interstitial: InterstitialAd? = null
+    private var rewarded: RewardedAd? = null
     private var bannerWanted = false
     private var lastAdAt = 0L
     private var container: FrameLayout? = null
@@ -79,6 +82,7 @@ class Ads(private val activity: Activity, private val prefs: SharedPreferences) 
             view.loadAd(AdRequest.Builder().build())
             banner = view
             loadInterstitial()
+            loadRewarded()
             applyBanner()
         } catch (_: Exception) {
             // ads are optional; the game runs fine without them
@@ -100,6 +104,30 @@ class Ads(private val activity: Activity, private val prefs: SharedPreferences) 
                 override fun onAdLoaded(ad: InterstitialAd) { interstitial = ad }
                 override fun onAdFailedToLoad(error: LoadAdError) { interstitial = null }
             })
+    }
+
+    private fun loadRewarded() {
+        RewardedAd.load(activity, BuildConfig.AD_REWARDED_ID, AdRequest.Builder().build(),
+            object : RewardedAdLoadCallback() {
+                override fun onAdLoaded(ad: RewardedAd) { rewarded = ad }
+                override fun onAdFailedToLoad(error: LoadAdError) { rewarded = null }
+            })
+    }
+
+    /**
+     * Rewarded ad for the free edition's one-time continue. Calls [then] with true if the player
+     * watched it to the end. If no ad could be loaded, the player gets the continue anyway (true).
+     */
+    fun showRewarded(then: (Boolean) -> Unit) {
+        val ad = rewarded
+        if (ad == null) { loadRewarded(); then(true); return }
+        var earned = false
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() { rewarded = null; loadRewarded(); then(earned) }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) { rewarded = null; loadRewarded(); then(true) }
+        }
+        lastAdAt = System.currentTimeMillis()   // counts toward the gap before the next full-screen ad
+        ad.show(activity) { earned = true }
     }
 
     /**

@@ -25,7 +25,7 @@ New to the game? Tap **TUTORIAL** on the title screen for a guided training run 
 - **Color code: red and striped = danger. Glowing cyan and green orbs = good.**
 - **Shield energy** is your lifeline and works automatically. Each crash costs 50 energy. Energy rebuilds very slowly (0.3/s, paused while the tractor beam is on) and +2 for every drone you shoot down.
 - The **tractor beam** reaches about 75 m ahead and drags any orbs in range toward your ship, at 9 energy per second. Use it in short bursts to grab orbs you'd otherwise miss.
-- **If you hit something with no shield energy left, the run is over.**
+- **If you hit something with no shield energy left, the run is over**, but once per run you're offered a **Continue**: an 8-second countdown lets you jump back in where you crashed with your score kept and 50 shield. Free edition: watch a short ad to continue. Pro: continue with no ad. The run is saved to the scoreboard only after you decline or the countdown runs out.
 - **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot). **Violet hourglass orbs** slow the trench to 45% speed for 12 seconds and also permanently knock the speed ramp back a notch. Orbs appear on timers (shield about every 14 s, slow-mo about every 22 s, lasers about every 30 s), so flying faster doesn't earn you more of them.
 - **Wall turrets** appear now and then. Their muzzle glows and whines as you approach, then fires one red laser at where you are. Dodge it or shoot it down (+150 points). It does 30 damage if it hits. You can hear which wall it's on.
 - Firing costs shield energy: about 3 per second of continuous fire.
@@ -48,6 +48,7 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 | Main game, tutorial, scoreboard | Yes | Yes |
 | Badges | 10 | All 24 |
 | Zen mode (steady speed, no turrets, crashes don't hurt) | No | Yes |
+| One continue per run | After watching an ad | Free, no ad |
 | Ads | Banner on menu screens, full-screen ad between some runs | None |
 
 **Test switch:** open Scores & Badges and **press and hold the SCOREBOARD tab for 2 seconds** (you'll see "Keep holding..." and then feel a buzz). Tapping the **FREE EDITION** / **PRO EDITION** label on the home screen 5 times quickly also works. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
@@ -59,7 +60,7 @@ Free edition only:
 - A full-screen ad before a new run, at most every 3 runs and at least 2 minutes apart, and never in a player's first 3 runs. Tuning is at the top of `Ads.kt`.
 - A privacy consent prompt appears where the law requires it (Google's UMP SDK).
 
-Test builds (the download link) always use Google's public **test** ads, so tapping them is safe. The Play Store (release) build uses the real ids set at the top of `app/build.gradle.kts` (`REAL_APP_ID`, `REAL_BANNER_ID`, `REAL_INTERSTITIAL_ID`) and falls back to test ids while those are empty. Before publishing, also add an `app-ads.txt` file to the developer website listed on the Play Store, and fill in the ads and Data safety sections in the Play Console.
+Test builds (the download link) always use Google's public **test** ads, so tapping them is safe. The Play Store (release) build uses the real ids set at the top of `app/build.gradle.kts` (`REAL_APP_ID`, `REAL_BANNER_ID`, `REAL_INTERSTITIAL_ID`, `REAL_REWARDED_ID`) and falls back to test ids while those are empty. Before publishing, also add an `app-ads.txt` file to the developer website listed on the Play Store, and fill in the ads and Data safety sections in the Play Console.
 
 Package name: `com.adamselite.trenchrun`.
 
