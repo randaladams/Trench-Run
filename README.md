@@ -55,7 +55,7 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 ## Ads (AdMob)
 
 Free edition only:
-- A banner at the bottom of the home screen, scoreboard and game-over screen. Never during a run.
+- A banner at the bottom of the home screen and game-over screen. Never during a run, and not on the Scores & Badges screens.
 - A full-screen ad before a new run, at most every 3 runs and at least 2 minutes apart, and never in a player's first 3 runs. Tuning is at the top of `Ads.kt`.
 - A privacy consent prompt appears where the law requires it (Google's UMP SDK).
 
