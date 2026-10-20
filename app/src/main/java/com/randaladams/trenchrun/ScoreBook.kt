@@ -13,11 +13,12 @@ data class RunRecord(val score: Int, val distance: Int, val kills: Int, val time
     }
 }
 
-class Badge(val id: String, val name: String, val desc: String, val color: Int)
+/** [pro] badges can only be earned in the Pro edition. */
+class Badge(val id: String, val name: String, val desc: String, val color: Int, val pro: Boolean = false)
 
 /**
  * Persistent scoreboard and badges.
- * Keeps the 19 most recent runs plus the all-time best run, which is always shown as entry 20.
+ * Keeps the all-time best run (shown as #1) plus the 19 most recent runs.
  */
 class ScoreBook(private val prefs: SharedPreferences) {
 
@@ -25,24 +26,39 @@ class ScoreBook(private val prefs: SharedPreferences) {
         const val RECENT = 19
 
         val BADGES = listOf(
+            // ---- free edition
             Badge("first", "First Flight", "Finish your first run", 0xFF9FF5C8.toInt()),
             Badge("grad", "Graduate", "Complete the tutorial", 0xFFFFD27A.toInt()),
             Badge("km1", "Trench Rookie", "Fly 1,000 m in one run", 0xFF8FB8FF.toInt()),
             Badge("km3", "Trench Veteran", "Fly 3,000 m in one run", 0xFF6F9BFF.toInt()),
-            Badge("km6", "Trench Legend", "Fly 6,000 m in one run", 0xFFB48CFF.toInt()),
-            Badge("score10k", "High Roller", "Score 10,000 in one run", 0xFFFFC040.toInt()),
             Badge("sharp", "Sharpshooter", "Destroy 25 drones in one run", 0xFFFF7050.toInt()),
-            Badge("exterm", "Exterminator", "Destroy 250 drones in total", 0xFFFF4A4A.toInt()),
-            Badge("untouch", "Untouchable", "Fly 1,500 m without a crash", 0xFF40E0FF.toInt()),
-            Badge("collector", "Collector", "Catch 5 orbs with the tractor beam in one run", 0xFF7FB8FF.toInt()),
+            Badge("deflector", "Deflector", "Shoot down 5 turret lasers in total", 0xFFFF9A6A.toInt()),
             Badge("armed", "Fully Armed", "Reach Laser Mk IV", 0xFF7CFF4A.toInt()),
-            Badge("cool", "Cool Head", "Destroy 15 drones in a run without overheating", 0xFF5CFF7A.toInt()),
-            Badge("bender", "Time Bender", "Collect 3 slow-mo orbs in one run", 0xFFC08CFF.toInt()),
-            Badge("dodger", "Dodger", "Dodge 5 turret shots in one run", 0xFFFFA040.toInt()),
-            Badge("survivor", "Survivor", "Recover to 50 shield after it hit zero", 0xFFE0E6EE.toInt()),
-            Badge("dedicated", "Dedicated", "Play 25 runs", 0xFFFFE080.toInt())
+            Badge("untouch", "Untouchable", "Fly 1,500 m without a crash", 0xFF40E0FF.toInt()),
+            Badge("dedicated", "Dedicated", "Play 25 runs", 0xFFFFE080.toInt()),
+            // ---- pro edition
+            Badge("km6", "Trench Legend", "Fly 6,000 m in one run", 0xFFB48CFF.toInt(), true),
+            Badge("score10k", "High Roller", "Score 10,000 in one run", 0xFFFFC040.toInt(), true),
+            Badge("exterm", "Exterminator", "Destroy 250 drones in total", 0xFFFF4A4A.toInt(), true),
+            Badge("laserwall", "Laser Wall", "Shoot down 50 turret lasers in total", 0xFFFF6A3A.toInt(), true),
+            Badge("collector", "Collector", "Catch 5 orbs with the tractor beam in one run", 0xFF7FB8FF.toInt(), true),
+            Badge("cool", "Cool Head", "Destroy 15 drones in a run without overheating", 0xFF5CFF7A.toInt(), true),
+            Badge("bender", "Time Bender", "Collect 3 slow-mo orbs in one run", 0xFFC08CFF.toInt(), true),
+            Badge("dodger", "Dodger", "Dodge 5 turret shots in one run", 0xFFFFA040.toInt(), true),
+            Badge("survivor", "Survivor", "Recover to 50 shield after it hit zero", 0xFFE0E6EE.toInt(), true),
+            Badge("purist", "Purist", "Fly 2,000 m without using the tractor beam", 0xFFA8C8E8.toInt(), true),
+            Badge("zen", "Zen Master", "Fly 5,000 m in one Zen run", 0xFF9FE8D0.toInt(), true)
         )
     }
+
+    /** Edition switch. Will be driven by a Play Store purchase later; for now a hidden test toggle. */
+    var pro = prefs.getBoolean("pro", false)
+        set(v) { field = v; prefs.edit().putBoolean("pro", v).apply() }
+
+    var laserKills = 0
+        private set
+    var zenBest = 0
+        private set
 
     val recent = ArrayList<RunRecord>()   // newest first
     var best: RunRecord? = null
@@ -72,6 +88,8 @@ class ScoreBook(private val prefs: SharedPreferences) {
         earned.addAll(prefs.getStringSet("badges", emptySet()) ?: emptySet())
         totalKills = prefs.getInt("totalKills", 0)
         runs = prefs.getInt("runs", 0)
+        laserKills = prefs.getInt("laserKills", 0)
+        zenBest = prefs.getInt("zenBest", 0)
     }
 
     private fun save() {
@@ -84,11 +102,14 @@ class ScoreBook(private val prefs: SharedPreferences) {
             .putStringSet("badges", HashSet(earned))
             .putInt("totalKills", totalKills)
             .putInt("runs", runs)
+            .putInt("laserKills", laserKills)
+            .putInt("zenBest", zenBest)
             .apply()
     }
 
     /** Records a finished run. Returns true if it set a new high score. */
-    fun record(run: RunRecord): Boolean {
+    fun record(run: RunRecord, laserKillsThisRun: Int): Boolean {
+        laserKills += laserKillsThisRun
         recent.add(0, run)
         while (recent.size > RECENT) recent.removeAt(recent.size - 1)
         runs++
@@ -103,14 +124,20 @@ class ScoreBook(private val prefs: SharedPreferences) {
     fun award(id: String): Badge? {
         if (earned.contains(id)) return null
         val b = BADGES.firstOrNull { it.id == id } ?: return null
+        if (b.pro && !pro) return null
         earned.add(id)
         save()
         return b
     }
 
+    fun recordZen(distance: Int) {
+        if (distance > zenBest) { zenBest = distance; save() }
+    }
+
+    /** Clears scores and badges. The edition (free/pro) is kept. */
     fun clearAll() {
         recent.clear(); earned.clear(); best = null
-        totalKills = 0; runs = 0
+        totalKills = 0; runs = 0; laserKills = 0; zenBest = 0
         prefs.edit().remove("high").apply()
         save()
     }

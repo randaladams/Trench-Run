@@ -248,6 +248,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         if (!game.soundOn) sound.stopLoops()
     }
 
+    private var versionTaps = 0
+    private var versionTapAt = 0L
+
     private fun handleTap(x: Float, y: Float) {
         synchronized(game) {
             when (game.state) {
@@ -258,6 +261,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                         toggleSound()
                     } else if (renderer.scoresRect.contains(x, y)) {
                         game.showScores()
+                    } else if (renderer.zenRect.contains(x, y)) {
+                        if (game.pro) { calibrate(); game.start(asZen = true) }
+                        else game.showMessage("ZEN MODE IS PART OF TRENCH RUN PRO", 2.5f)
                     } else if (renderer.tutorialRect.contains(x, y)) {
                         calibrate()
                         game.start(asTutorial = true)
@@ -274,6 +280,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     game.confirmClear -> {
                         if (renderer.confirmYesRect.contains(x, y)) game.clearScores()
                         else if (renderer.confirmNoRect.contains(x, y)) { game.confirmClear = false }
+                    }
+                    BuildConfig.DEBUG && renderer.versionRect.contains(x, y) -> {
+                        val now = System.currentTimeMillis()
+                        if (now - versionTapAt > 1500) versionTaps = 0
+                        versionTapAt = now
+                        versionTaps++
+                        if (versionTaps >= 7) { versionTaps = 0; game.toggleEdition() }
                     }
                     renderer.backRect.contains(x, y) -> game.backToTitle()
                     renderer.clearRect.contains(x, y) -> { game.confirmClear = true }

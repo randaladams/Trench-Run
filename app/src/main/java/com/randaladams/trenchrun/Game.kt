@@ -48,6 +48,8 @@ class Game(private val prefs: SharedPreferences) {
         const val SLOW_DURATION = 12f    // seconds
         const val SLOW_ROLLBACK = 900f   // slow-mo also permanently rolls the speed ramp back this far
         const val LASER_DAMAGE = 30f     // enemy laser hit
+        const val FIRE_ENERGY_PER_SEC = 0.8f  // tiny shield cost for holding fire
+        const val ZEN_SPEED = 32f
         const val HEAT_PER_SEC = 44f     // heat added per second of continuous fire (same at every laser level)
         const val COOL_PER_SEC = 20f     // heat lost per second (always cooling)
         const val OVERHEAT_RESUME = 35f  // after overheating, lasers unlock once heat falls below this
@@ -111,6 +113,13 @@ class Game(private val prefs: SharedPreferences) {
     private var turretDodged = 0
     private var overheatedThisRun = false
     private var hitZero = false
+    private var laserKillsRun = 0
+    private var tractorUsed = false
+
+    /** Zen mode (Pro): steady speed, no turrets, crashes don't hurt, nothing to lose. */
+    var zen = false
+        private set
+    val pro get() = book.pro
     var time = 0f
     var stateTime = 0f
 
@@ -166,8 +175,9 @@ class Game(private val prefs: SharedPreferences) {
 
     // ------------------------------------------------------------------ flow
 
-    fun start(asTutorial: Boolean = false) {
+    fun start(asTutorial: Boolean = false, asZen: Boolean = false) {
         tutorial = asTutorial
+        zen = asZen && !asTutorial
         tutStep = -1; tutTimer = 0f; tutComplete = false
         entities.clear(); bolts.clear(); enemyBolts.clear(); particles.clear()
         slowTime = 0f; slowMul = 1f; progress = 0f
@@ -179,6 +189,8 @@ class Game(private val prefs: SharedPreferences) {
         heat = 0f; overheated = false
         lastCrashAt = 0f; tractorCatches = 0; slowCount = 0; turretDodged = 0
         overheatedThisRun = false; hitZero = false; confirmClear = false
+        laserKillsRun = 0; tractorUsed = false
+        if (zen) progress = 900f
         kills = 0; bonus = 0; score = 0
         invuln = 1.5f; hitFlash = 0f; shake = 0f
         fireCooldown = 0f
@@ -188,7 +200,9 @@ class Game(private val prefs: SharedPreferences) {
         state = State.PLAYING
         stateTime = 0f
         play(Sfx.START)
-        if (tutorial) { nextTutorialStep(); invuln = 0f } else showMessage("GOOD LUCK, PILOT", 2f)
+        if (tutorial) { nextTutorialStep(); invuln = 0f }
+        else if (zen) showMessage("ZEN MODE  -  RELAX AND FLY", 2.5f)
+        else showMessage("GOOD LUCK, PILOT", 2f)
     }
 
     /** Leave the current run (pause menu "End game"). Keeps the high score, returns to the title. */
@@ -196,7 +210,7 @@ class Game(private val prefs: SharedPreferences) {
         if (!tutorial && distance > 30f) finishRun()
         entities.clear(); bolts.clear(); enemyBolts.clear()
         tractorOn = false; firing = false; tractorHeld = false
-        tutorial = false
+        tutorial = false; zen = false
         paused = false
         state = State.TITLE
         stateTime = 0f
@@ -217,7 +231,8 @@ class Game(private val prefs: SharedPreferences) {
     /** Saves the run to the scoreboard and checks end-of-run badges. */
     private fun finishRun() {
         if (tutorial) return
-        newHigh = book.record(RunRecord(score, distance.toInt(), kills, System.currentTimeMillis()))
+        if (zen) { book.recordZen(distance.toInt()); checkBadges(); return }
+        newHigh = book.record(RunRecord(score, distance.toInt(), kills, System.currentTimeMillis()), laserKillsRun)
         checkBadges()
         badge("first")
         if (book.runs >= 25) badge("dedicated")
@@ -233,6 +248,13 @@ class Game(private val prefs: SharedPreferences) {
     private fun checkBadges() {
         if (tutorial) return
         val e = book.earned
+        if (zen) {
+            if (!e.contains("zen") && distance >= 5000f) badge("zen")
+            return
+        }
+        if (!e.contains("deflector") && book.laserKills + laserKillsRun >= 5) badge("deflector")
+        if (!e.contains("laserwall") && book.laserKills + laserKillsRun >= 50) badge("laserwall")
+        if (!e.contains("purist") && !tractorUsed && distance >= 2000f) badge("purist")
         if (!e.contains("km1") && distance >= 1000f) badge("km1")
         if (!e.contains("km3") && distance >= 3000f) badge("km3")
         if (!e.contains("km6") && distance >= 6000f) badge("km6")
@@ -254,7 +276,14 @@ class Game(private val prefs: SharedPreferences) {
 
     fun pause() { if (state == State.PLAYING) paused = true }
 
-    private fun showMessage(m: String, t: Float = 1.6f) { message = m; messageTime = t }
+    fun showMessage(m: String, t: Float = 1.6f) { message = m; messageTime = t }
+
+    /** Hidden tester switch on the scoreboard. */
+    fun toggleEdition() {
+        book.pro = !book.pro
+        showMessage(if (book.pro) "PRO EDITION ENABLED (TEST)" else "FREE EDITION ENABLED (TEST)", 2.5f)
+        play(Sfx.UPGRADE)
+    }
 
     // ---------------------------------------------------------------- update
 
@@ -312,10 +341,14 @@ class Game(private val prefs: SharedPreferences) {
         slowTime = max(0f, slowTime - dt)
         val slowTarget = if (slowTime > 0f) SLOW_FACTOR else 1f
         slowMul += (slowTarget - slowMul) * min(1f, dt * 2.5f)
-        speed = if (tutorial) 24f * slowMul else baseSpeed * slowMul
+        speed = when {
+            tutorial -> 24f * slowMul
+            zen -> ZEN_SPEED * slowMul
+            else -> baseSpeed * slowMul
+        }
         val dz = speed * dt
         distance += dz
-        progress += dz
+        if (!zen) progress += dz
         shieldOrbTimer -= dt; weaponOrbTimer -= dt; slowOrbTimer -= dt
         moveWorld(dz, dt)
         if (tutorial) updateTutorial(dt) else spawn()
@@ -326,7 +359,8 @@ class Game(private val prefs: SharedPreferences) {
         tractorOn = tractorHeld && energy > 0.5f
         if (tractorOn && !wasOn) play(Sfx.TRACTOR_ON)
         if (tractorOn) {
-            energy = max(0f, energy - TRACTOR_DRAIN * dt)
+            tractorUsed = true
+            if (!zen) energy = max(0f, energy - TRACTOR_DRAIN * dt)
             pullPickups(dt)
         } else {
             energy = min(MAX_ENERGY, energy + REGEN * dt)
@@ -376,7 +410,7 @@ class Game(private val prefs: SharedPreferences) {
             }
         }
 
-        score = if (tutorial) 0 else (distance * 0.5f).toInt() + kills * 100 + bonus
+        score = if (tutorial || zen) 0 else (distance * 0.5f).toInt() + kills * 100 + bonus
         if (energy <= 0.5f) hitZero = true
         checkBadges()
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
@@ -406,6 +440,24 @@ class Game(private val prefs: SharedPreferences) {
             if (!b.alive) continue
             b.prevZ = b.z
             b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt
+            // did one of our lasers meet it head-on? (both are moving, so test the swept z ranges)
+            for (pb in bolts) {
+                if (!pb.alive) continue
+                if (pb.prevZ <= b.prevZ + 0.6f && pb.z >= b.z - 0.6f) {
+                    val dx = pb.x - b.x; val dy = pb.y - b.y
+                    if (dx * dx + dy * dy < 1.3f * 1.3f) {
+                        pb.alive = false; b.alive = false
+                        laserKillsRun++
+                        bonus += 150
+                        explode(b.x, b.y, max(b.z, 0.5f), 0xFFFFE0A0.toInt(), 22, 7f)
+                        explode(b.x, b.y, max(b.z, 0.5f), 0xFFFF5030.toInt(), 12, 4f)
+                        play(Sfx.EXPLODE)
+                        showMessage("LASER SHOT DOWN  +150", 1.2f)
+                        break
+                    }
+                }
+            }
+            if (!b.alive) continue
             // crossing the ship's plane: did it connect?
             if (b.prevZ >= -HZ && b.z <= HZ &&
                 b.x > px - HX - 0.2f && b.x < px + HX + 0.2f &&
@@ -439,6 +491,11 @@ class Game(private val prefs: SharedPreferences) {
 
     private fun onHit(damage: Float) {
         if (invuln > 0f) return
+        if (zen) {   // bump, no damage
+            invuln = 0.8f; shieldFlash = 1f; shake = 0.6f
+            play(Sfx.SHIELD_HIT)
+            return
+        }
         if (energy <= 0.5f) {           // no shield power left: ship is destroyed
             if (tutorial) {
                 energy = 60f
@@ -523,6 +580,7 @@ class Game(private val prefs: SharedPreferences) {
         fireCooldown = 1f / rate
         play(Sfx.LASER)
         heat += HEAT_PER_SEC / rate
+        if (!zen) energy = max(0f, energy - FIRE_ENERGY_PER_SEC / rate)
         if (heat >= 100f) {
             heat = 100f
             overheated = true
@@ -693,7 +751,7 @@ class Game(private val prefs: SharedPreferences) {
 
     /** Occasional wall turret: rare at first, a bit more common as difficulty rises. */
     private fun maybeSpawnTurret(z: Float, span: Float) {
-        if (distance < 300f) return
+        if (zen || distance < 300f) return
         if (rng.nextFloat() > 0.10f + 0.14f * difficulty) return
         val left = rng.nextBoolean()
         val y = rand(2.5f, 8f)
@@ -740,7 +798,7 @@ class Game(private val prefs: SharedPreferences) {
         "RED STRIPES are dangerous. Each crash costs half your shield.\nFly over, under or around these.",
         "CYAN ORBS restore shield energy.\nFly into this one.",
         "HOLD the RIGHT side of the screen for the TRACTOR BEAM.\nIt pulls nearby orbs to you but drains energy. Catch this orb with it.",
-        "WALL TURRETS glow and whine, then fire at you.\nKeep moving to dodge the shot.",
+        "WALL TURRETS glow and whine, then fire at you.\nDodge the shot, or shoot it down with your lasers.",
         "GREEN orbs upgrade your lasers. VIOLET hourglass orbs slow everything down.\nGrab them if you can.",
         "TRAINING COMPLETE!\nTap the screen to return to the title."
     )

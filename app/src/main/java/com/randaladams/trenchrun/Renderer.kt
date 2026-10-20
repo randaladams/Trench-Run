@@ -70,8 +70,12 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val clearRect = RectF()
     val confirmYesRect = RectF()
     val confirmNoRect = RectF()
+    val zenRect = RectF()
+    /** Hidden edition toggle: tap the version line 7 times (debug builds only). */
+    val versionRect = RectF()
     private val dateFmt = java.text.SimpleDateFormat("MMM d  h:mm a", java.util.Locale.US)
-    private val versionLine = "Trench Run  version ${BuildConfig.VERSION_NAME}  (build ${BuildConfig.VERSION_CODE - 100})"
+    private fun versionLine(g: Game) =
+        "Trench Run ${if (g.pro) "PRO" else "FREE"}  version ${BuildConfig.VERSION_NAME}  (build ${BuildConfig.VERSION_CODE - 100})"
 
     private val wallTex = Textures.walls(4)
     private val floorTex = Textures.floors(2)
@@ -194,7 +198,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         for (e in g.entities) if (e.alive && e.z0 < Game.FAR && e.z1 > near) sorted.add(e)
         sorted.sortWith(byDepth)
         for (e in sorted) if (e.z1 >= 0f) drawEntity(c, e, g)
-        for (b in g.bolts) drawBolt(c, b)
+        for (b in g.bolts) if (b.alive) drawBolt(c, b)
         for (b in g.enemyBolts) if (b.z >= 0f) drawEnemyBolt(c, b)
         if (g.tractorOn) drawTractor(c, g)
         if (g.state != Game.State.GAME_OVER) drawShip(c, g)
@@ -733,7 +737,10 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             c.drawRect(rect, fill)
         }
 
-        if (g.tutorial) {   // no score during training
+        if (g.zen) {
+            text(c, "ZEN MODE", w - pad, pad + ts, ts * 1.0f, 0xFF9FE8D0.toInt(), Paint.Align.RIGHT)
+            text(c, "%,d m".format((g.distance).toInt()), w - pad, pad + ts * 2.2f, ts * 0.8f, 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
+        } else if (g.tutorial) {   // no score during training
             text(c, "TRAINING  %d / %d".format(min(g.tutStep + 1, g.tutSteps - 1), g.tutSteps - 1), w - pad, pad + ts, ts * 1.0f, 0xFFFFD27A.toInt(), Paint.Align.RIGHT)
         } else {
             text(c, "%,d".format(g.score), w - pad, pad + ts, ts * 1.2f, 0xFFFFFFFF.toInt(), Paint.Align.RIGHT)
@@ -769,12 +776,6 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         line.color = withAlpha(0xFFFF6A5A.toInt(), if (g.firing) 0.9f else 0.35f)
         c.drawCircle(pad + zr, zy, zr, line)
         text(c, if (g.overheated) "HOT" else "FIRE", pad + zr, zy + ts * 0.3f, ts * 0.75f, if (g.overheated) heatColor(g) else line.color)
-        if (g.heat > 0.5f) {   // heat ring fills clockwise around the fire button
-            line.color = heatColor(g)
-            line.strokeWidth = dp(5f)
-            rect.set(pad + zr - zr - dp(6f), zy - zr - dp(6f), pad + zr + zr + dp(6f), zy + zr + dp(6f))
-            c.drawArc(rect, -90f, 360f * g.heat / 100f, false, line)
-        }
         line.color = withAlpha(TRACTOR, if (g.tractorOn) 0.9f else 0.35f)
         c.drawCircle(w - pad - zr, zy, zr, line)
         text(c, "TRACTOR", w - pad - zr, zy + ts * 0.3f, ts * 0.62f, line.color)
@@ -853,8 +854,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             "HOLD LEFT SIDE ........... fire lasers",
             "HOLD RIGHT SIDE .......... tractor beam: pulls orbs in (uses energy)"
         )
-        var y = h * 0.29f
-        for (l in lines) { text(c, l, w / 2f, y, ts * 0.78f, 0xFFE6ECF5.toInt()); y += ts * 1.1f }
+        var y = h * 0.3f
+        for (l in lines) { text(c, l, w / 2f, y, ts * 0.74f, 0xFFE6ECF5.toInt()); y += ts * 1.0f }
 
         // legend: what is good and what is dangerous
         y += ts * 0.3f
@@ -873,36 +874,38 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         }
         y += ts * 1.5f
 
-        // toggles
+        // buttons: row 1 = modes and scores, row 2 = settings
         txt.textSize = ts * 0.72f
+        val gold = 0xFFFFD27A.toInt()
+        val zenCol = if (g.pro) 0xFF9FE8D0.toInt() else 0x88FFFFFF.toInt()
+        val row1 = arrayOf("TUTORIAL", if (g.pro) "ZEN MODE" else "ZEN MODE  (PRO)", "SCORES & BADGES")
+        val r1w = row1.map { txt.measureText(it) + dp(36f) }
+        val gap = dp(14f)
+        var bx = w / 2f - (r1w.sum() + gap * 2) / 2f
+        val rects1 = arrayOf(tutorialRect, zenRect, scoresRect)
+        val cols1 = intArrayOf(gold, zenCol, gold)
+        for (i in 0..2) {
+            rects1[i].set(bx, y - ts, bx + r1w[i], y + ts * 0.5f)
+            fill.color = withAlpha(cols1[i], 0.22f); c.drawRoundRect(rects1[i], dp(8f), dp(8f), fill)
+            line.color = cols1[i]; line.strokeWidth = dp(2f); c.drawRoundRect(rects1[i], dp(8f), dp(8f), line)
+            text(c, row1[i], rects1[i].centerX(), y, ts * 0.72f, cols1[i])
+            bx += r1w[i] + gap
+        }
+        y += ts * 2f
         val pitchLabel = if (g.invertPitch) "PITCH: FORWARD = CLIMB" else "PITCH: FORWARD = DIVE"
         val soundLabel = if (g.soundOn) "SOUND: ON" else "SOUND: OFF"
-        val tutLabel = "TUTORIAL"
-        val scLabel = "SCORES & BADGES"
         val pw = txt.measureText(pitchLabel) + dp(28f)
         val sw = txt.measureText(soundLabel) + dp(28f)
-        val tw = txt.measureText(tutLabel) + dp(36f)
-        val cw = txt.measureText(scLabel) + dp(36f)
-        val gap = dp(14f)
-        val left = w / 2f - (tw + cw + pw + sw + gap * 3) / 2f
-        tutorialRect.set(left, y - ts, left + tw, y + ts * 0.5f)
-        scoresRect.set(tutorialRect.right + gap, y - ts, tutorialRect.right + gap + cw, y + ts * 0.5f)
-        fill.color = 0x40FFD27A; c.drawRoundRect(scoresRect, dp(8f), dp(8f), fill)
-        line.color = 0xFFFFD27A.toInt(); line.strokeWidth = dp(2f)
-        c.drawRoundRect(scoresRect, dp(8f), dp(8f), line)
-        text(c, scLabel, scoresRect.centerX(), y, ts * 0.72f, 0xFFFFD27A.toInt())
-        toggleRect.set(scoresRect.right + gap, y - ts, scoresRect.right + gap + pw, y + ts * 0.5f)
+        val left = w / 2f - (pw + sw + gap) / 2f
+        toggleRect.set(left, y - ts, left + pw, y + ts * 0.5f)
         soundRect.set(toggleRect.right + gap, y - ts, toggleRect.right + gap + sw, y + ts * 0.5f)
-        fill.color = 0x40FFD27A; c.drawRoundRect(tutorialRect, dp(8f), dp(8f), fill)
-        line.color = 0xFFFFD27A.toInt(); line.strokeWidth = dp(2f)
-        c.drawRoundRect(tutorialRect, dp(8f), dp(8f), line)
         line.color = HUD; line.strokeWidth = dp(1.5f)
         c.drawRoundRect(toggleRect, dp(8f), dp(8f), line)
         c.drawRoundRect(soundRect, dp(8f), dp(8f), line)
-        text(c, tutLabel, tutorialRect.centerX(), y, ts * 0.72f, 0xFFFFD27A.toInt())
         text(c, pitchLabel, toggleRect.centerX(), y, ts * 0.72f, HUD)
         text(c, soundLabel, soundRect.centerX(), y, ts * 0.72f, HUD)
-        text(c, "(tap a button to change it)", w / 2f, y + ts * 1.2f, ts * 0.6f, 0x99FFFFFF.toInt())
+        if (g.messageTime > 0f) text(c, g.message, w / 2f, y + ts * 1.5f, ts * 0.8f, withAlpha(gold, min(1f, g.messageTime * 2f)))
+        text(c, if (g.pro) "PRO EDITION" else "FREE EDITION", w / 2f, h * 0.17f + ts * 1.1f, ts * 0.6f, 0x99FFD27A.toInt())
 
         val blink = 0.6f + 0.4f * sin(g.time * 4f)
         text(c, "Hold your phone the way you want to play, then tap to launch", w / 2f, h * 0.87f, ts * 0.8f, withAlpha(0xFFFFFFFF.toInt(), blink))
@@ -964,10 +967,24 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         text(c, "DIST", colDist, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
         text(c, "DRONES", colKills, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
         y += rowH
+        // #1: high score, always
+        rect.set(lx - dp(6f), y - rowH * 0.8f, rx, y + rowH * 0.35f)
+        fill.color = 0x30FFD27A; c.drawRoundRect(rect, dp(6f), dp(6f), fill)
+        val best = book.best
+        val gold = 0xFFFFD27A.toInt()
+        text(c, " 1", lx, y, small, gold, Paint.Align.LEFT)
+        if (best != null) {
+            text(c, if (best.time > 0) "HIGH  " + dateFmt.format(java.util.Date(best.time)) else "HIGH SCORE", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
+            text(c, "%,d".format(best.score), colScore, y, small, gold, Paint.Align.RIGHT)
+            if (best.distance > 0) text(c, "%,d m".format(best.distance), colDist, y, small, gold, Paint.Align.RIGHT)
+            if (best.time > 0) text(c, "${best.kills}", colKills, y, small, gold, Paint.Align.RIGHT)
+        } else text(c, "HIGH SCORE  -", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
+        y += rowH
+        // #2-20: the 19 most recent runs, newest first
         for (i in 0 until ScoreBook.RECENT) {
             val r = book.recent.getOrNull(i)
             val col = if (r != null && i == 0) 0xFFFFFFFF.toInt() else 0xCCDDE6F0.toInt()
-            text(c, "%2d".format(i + 1), lx, y, small, 0x77FFFFFF, Paint.Align.LEFT)
+            text(c, "%2d".format(i + 2), lx, y, small, 0x77FFFFFF, Paint.Align.LEFT)
             if (r != null) {
                 text(c, dateFmt.format(java.util.Date(r.time)), lx + small * 2f, y, small, col, Paint.Align.LEFT)
                 text(c, "%,d".format(r.score), colScore, y, small, col, Paint.Align.RIGHT)
@@ -979,23 +996,10 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             }
             y += rowH
         }
-        // #20: high score, always
-        rect.set(lx - dp(6f), y - rowH * 0.8f, rx, y + rowH * 0.35f)
-        fill.color = 0x30FFD27A; c.drawRoundRect(rect, dp(6f), dp(6f), fill)
-        val best = book.best
-        val gold = 0xFFFFD27A.toInt()
-        text(c, "20", lx, y, small, gold, Paint.Align.LEFT)
-        if (best != null) {
-            text(c, if (best.time > 0) "HIGH  " + dateFmt.format(java.util.Date(best.time)) else "HIGH SCORE", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
-            text(c, "%,d".format(best.score), colScore, y, small, gold, Paint.Align.RIGHT)
-            if (best.distance > 0) text(c, "%,d m".format(best.distance), colDist, y, small, gold, Paint.Align.RIGHT)
-            if (best.time > 0) text(c, "${best.kills}", colKills, y, small, gold, Paint.Align.RIGHT)
-        } else text(c, "HIGH SCORE  -", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
-
         // ---- right: badge grid 4 x 4
         val gx0 = w * 0.51f; val gx1 = w - pad
         val gy0 = pad + ts * 2.8f; val gy1 = h - ts * 5f
-        val cols = 4; val rows = (ScoreBook.BADGES.size + cols - 1) / cols
+        val cols = 5; val rows = (ScoreBook.BADGES.size + cols - 1) / cols
         val cellW = (gx1 - gx0) / cols; val cellH = (gy1 - gy0) / rows
         val mr = min(cellW, cellH) * 0.2f
         val nameSize = min(ts * 0.8f, cellW / 11f)
@@ -1005,6 +1009,11 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             val cy = gy0 + cellH * (i / cols) + mr * 1.5f
             val got = book.earned.contains(b.id)
             medal(c, cx, cy, mr, b, got)
+            if (b.pro && !g.pro) {   // locked behind the Pro edition
+                rect.set(cx + mr * 0.2f, cy - mr * 1.25f, cx + mr * 1.6f, cy - mr * 0.45f)
+                fill.color = 0xFFFFD27A.toInt(); c.drawRoundRect(rect, dp(4f), dp(4f), fill)
+                text(c, "PRO", rect.centerX(), rect.bottom - mr * 0.18f, mr * 0.55f, 0xFF1A1A22.toInt())
+            }
             text(c, b.name, cx, cy + mr + nameSize * 1.3f, nameSize, if (got) b.color else 0x88FFFFFF.toInt())
             // wrap description onto up to two lines
             txt.textSize = descSize
@@ -1020,13 +1029,20 @@ class Renderer(private val density: Float, private val buildLabel: String) {
 
         // ---- bottom: stats, buttons, version
         val by = h - ts * 3.6f
-        text(c, "Runs played: %,d    Drones destroyed: %,d".format(book.runs, book.totalKills), w * 0.25f, by - ts * 0.4f, ts * 0.75f, 0x99FFFFFF.toInt())
+        text(c, "Runs: %,d   Drones: %,d   Lasers shot down: %,d".format(book.runs, book.totalKills, book.laserKills) +
+            (if (g.pro && book.zenBest > 0) "   Zen best: %,d m".format(book.zenBest) else ""), w * 0.25f, by - ts * 0.4f, ts * 0.75f, 0x99FFFFFF.toInt())
         val bw = max(dp(120f), w * 0.13f); val bh = ts * 1.9f
         backRect.set(w / 2f - bw - dp(10f), by, w / 2f - dp(10f), by + bh)
         clearRect.set(w / 2f + dp(10f), by, w / 2f + dp(10f) + bw, by + bh)
         button(c, backRect, "BACK", HUD, ts * 0.85f)
         button(c, clearRect, "CLEAR ALL", DANGER, ts * 0.85f)
-        text(c, versionLine, w - pad, h - dp(8f), ts * 0.6f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
+        val vl = versionLine(g)
+        txt.textSize = ts * 0.6f
+        val vw = txt.measureText(vl)
+        versionRect.set(w - pad - vw - dp(10f), h - dp(8f) - ts, w, h)
+        text(c, vl, w - pad, h - dp(8f), ts * 0.6f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
+        if (g.messageTime > 0f && !g.confirmClear)
+            text(c, g.message, w / 2f, by - ts * 1.6f, ts * 0.85f, withAlpha(0xFFFFD27A.toInt(), min(1f, g.messageTime * 2f)))
 
         if (g.confirmClear) {
             dim(c, 0.7f)
