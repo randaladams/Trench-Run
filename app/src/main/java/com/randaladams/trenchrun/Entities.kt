@@ -33,6 +33,7 @@ class Entity(
     var baseX = 0f
     var driftAmp = 0f
     var fired = false        // turrets fire once
+    var tractored = false    // pulled by the tractor beam
     var fireZ = 60f          // distance ahead at which a turret fires
 
     val isPickup get() = kind == Kind.PICKUP_SHIELD || kind == Kind.PICKUP_WEAPON || kind == Kind.PICKUP_SLOW

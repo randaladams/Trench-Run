@@ -81,7 +81,7 @@ class Sound(context: Context) {
                 ids[Game.Sfx.PICKUP] = load("pickup", arpeggio(floatArrayOf(660f, 880f, 1320f), 0.09f, false))
                 ids[Game.Sfx.UPGRADE] = load("upgrade", arpeggio(floatArrayOf(523f, 659f, 784f, 1047f, 1319f), 0.08f, true))
                 ids[Game.Sfx.GAME_OVER] = load("game_over", gameOver())
-                ids[Game.Sfx.SHIELD_UP] = load("shield_up", shieldUp())
+                ids[Game.Sfx.TRACTOR_ON] = load("shield_up", shieldUp())
                 ids[Game.Sfx.START] = load("start", start())
                 ids[Game.Sfx.ENEMY_FIRE] = load("enemy_fire", enemyFire())
                 ids[Game.Sfx.TURRET_CHARGE] = load("turret_charge", turretCharge())
@@ -107,7 +107,7 @@ class Sound(context: Context) {
         if (!ready(id)) return
         val vol = when (s) {
             Game.Sfx.LASER -> 0.35f
-            Game.Sfx.SHIELD_UP -> 0.5f
+            Game.Sfx.TRACTOR_ON -> 0.5f
             Game.Sfx.TURRET_CHARGE -> 0.55f
             else -> 0.9f
         }

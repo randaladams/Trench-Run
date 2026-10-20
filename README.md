@@ -15,20 +15,23 @@ Open that link on your Android phone, then open the downloaded file to install. 
 | Tilt left / right | Steer left / right |
 | Tilt forward / back | Dive / climb (swap on the title screen) |
 | Hold the **left** side of the screen | Fire lasers at the crosshair |
-| Hold the **right** side of the screen | Raise the shield |
+| Hold the **right** side of the screen | Tractor beam: pulls nearby orbs to you (drains shield energy) |
+
+New to the game? Tap **TUTORIAL** on the title screen for a guided training run where you can't die.
 
 - Hold the phone however is comfortable, then tap to launch. That angle becomes "level".
 - **Color code: red and striped = danger. Glowing cyan and green orbs = good.**
-- **Shield energy** is your lifeline. A hit costs 50 energy, or 20 if your shield is raised. Raising it drains energy while held. Energy rebuilds very slowly (0.3/s) and +2 for every drone you shoot down.
+- **Shield energy** is your lifeline and works automatically. Each crash costs 50 energy. Energy rebuilds very slowly (0.3/s, paused while the tractor beam is on) and +2 for every drone you shoot down.
+- The **tractor beam** reaches about 75 m ahead and drags any orbs in range toward your ship, at 9 energy per second. Use it in short bursts to grab orbs you'd otherwise miss.
 - **If you hit something with no shield energy left, the run is over.**
-- **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot). **Violet hourglass orbs** slow the trench to 45% speed for 12 seconds and also permanently knock the speed ramp back a notch. Orbs appear on timers (shield about every 18 s, slow-mo about every 22 s, lasers about every 30 s), so flying faster doesn't earn you more of them.
-- **Wall turrets** appear now and then. Their muzzle glows and whines as you approach, then fires one red laser at where you are. Move to dodge it, or raise your shield (30 damage unshielded, 10 shielded). You can hear which wall it's on.
+- **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot). **Violet hourglass orbs** slow the trench to 45% speed for 12 seconds and also permanently knock the speed ramp back a notch. Orbs appear on timers (shield about every 14 s, slow-mo about every 22 s, lasers about every 30 s), so flying faster doesn't earn you more of them.
+- **Wall turrets** appear now and then. Their muzzle glows and whines as you approach, then fires one red laser at where you are. Keep moving to dodge it (30 damage if it hits). You can hear which wall it's on.
 - When shield energy drops below 25 you hear one warning beep and a spoken "Shield critical" (using the phone's text-to-speech voice), and the screen edge pulses red. At zero you hear "Shields down!"
 - Red drones can be shot down for 100 points each. The crosshair turns red when one is in your line of fire.
 - Speed and obstacle density increase the farther you go, and speed keeps creeping up slowly after that to a capped top speed. Current speed is shown top right.
-- Pause and sound on/off buttons sit at the bottom center of the screen. The back button also pauses, and the phone volume buttons adjust sound.
+- Pause and sound on/off buttons sit at the bottom center of the screen. The pause screen has **Resume** and **End game**. The back button also pauses, and the phone volume buttons adjust sound.
 
-Emulator testing: arrow keys steer, Space fires, Shift or Z raises the shield, Enter launches.
+Emulator testing: arrow keys steer, Space fires, Shift or Z holds the tractor beam, Enter launches.
 
 ## Project layout
 

@@ -28,14 +28,15 @@ class Game(private val prefs: SharedPreferences) {
 
         // ---- tuning knobs ----
         const val MAX_ENERGY = 100f
-        const val HIT_DAMAGE = 50f       // hit with shield down (2 hits empty a full shield)
-        const val SHIELDED_DAMAGE = 20f  // hit with shield raised
-        const val SHIELD_DRAIN = 14f     // energy per second while shield is raised
+        const val HIT_DAMAGE = 50f       // shield energy lost per crash (2 hits empty a full shield)
+        const val TRACTOR_DRAIN = 9f     // energy per second while the tractor beam is held
+        const val TRACTOR_RANGE = 75f    // how far ahead the beam reaches
+        const val TRACTOR_PULL = 8f      // sideways pull speed (units/s), plus a proportional part
         const val REGEN = 0.3f           // energy per second rebuilt while flying (flat, not tied to speed)
         const val KILL_ENERGY = 2f       // energy gained for each drone destroyed
         const val PICKUP_ENERGY = 25f
         // Pickups are on timers (seconds), so flying faster does NOT hand out more energy.
-        const val SHIELD_ORB_EVERY = 18f   // +/- 4s
+        const val SHIELD_ORB_EVERY = 14f   // +/- 3s
         const val WEAPON_ORB_EVERY = 30f   // +/- 5s
         const val SLOW_ORB_EVERY = 22f     // +/- 5s, starts once things speed up
         const val BASE_SPEED = 30f
@@ -46,14 +47,13 @@ class Game(private val prefs: SharedPreferences) {
         const val SLOW_FACTOR = 0.45f    // slow-mo pickup: speed multiplier while active
         const val SLOW_DURATION = 12f    // seconds
         const val SLOW_ROLLBACK = 900f   // slow-mo also permanently rolls the speed ramp back this far
-        const val LASER_DAMAGE = 30f     // enemy laser, shield down
-        const val LASER_SHIELDED = 10f   // enemy laser, shield up
+        const val LASER_DAMAGE = 30f     // enemy laser hit
         const val CRITICAL_ENERGY = 25f  // one warning when energy drops below this
         const val BOLT_SPEED = 160f
     }
 
     enum class State { TITLE, PLAYING, GAME_OVER }
-    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, SHIELD_UP, START, ENEMY_FIRE, TURRET_CHARGE, SLOW, ALARM, VOICE_CRITICAL, VOICE_DEPLETED }
+    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, TRACTOR_ON, START, ENEMY_FIRE, TURRET_CHARGE, SLOW, ALARM, VOICE_CRITICAL, VOICE_DEPLETED }
 
     /** Sound events raised this frame (with stereo pan -1..1); GameView drains and plays them. */
     val sfx = ArrayList<Sfx>()
@@ -68,13 +68,13 @@ class Game(private val prefs: SharedPreferences) {
     @Volatile var inputRoll = 0f    // -1 (left) .. 1 (right)
     @Volatile var inputPitch = 0f   // -1 (down) .. 1 (up)
     @Volatile var firing = false
-    @Volatile var shieldHeld = false
+    @Volatile var tractorHeld = false
 
     // Player
     var px = 0f; var py = Y_MID
     var vx = 0f; var vy = 0f
     var energy = MAX_ENERGY
-    var shieldUp = false
+    var tractorOn = false
     var weaponLevel = 1
     var invuln = 0f
     var hitFlash = 0f
@@ -114,6 +114,23 @@ class Game(private val prefs: SharedPreferences) {
     private var weaponOrbTimer = 0f
     private var slowOrbTimer = 0f
     val critical get() = state == State.PLAYING && energy < CRITICAL_ENERGY
+
+    // ---- tutorial
+    var tutorial = false
+        private set
+    var tutStep = -1
+        private set
+    var tutText = ""
+        private set
+    var tutComplete = false
+        private set
+    private var tutTimer = 0f
+    private var tutFlags = 0
+    private var tutKills = 0
+    private var tutTractorCatch = false
+    private var lastCollected: Kind? = null
+    private val tutSpawned = ArrayList<Entity>()
+    val tutSteps get() = TUT_TEXT.size
     val particles = ArrayList<Particle>()
 
     private var fireCooldown = 0f
@@ -127,14 +144,16 @@ class Game(private val prefs: SharedPreferences) {
 
     // ------------------------------------------------------------------ flow
 
-    fun start() {
+    fun start(asTutorial: Boolean = false) {
+        tutorial = asTutorial
+        tutStep = -1; tutTimer = 0f; tutComplete = false
         entities.clear(); bolts.clear(); enemyBolts.clear(); particles.clear()
         slowTime = 0f; slowMul = 1f; progress = 0f
         criticalWarned = false; depletedWarned = false
         shieldOrbTimer = SHIELD_ORB_EVERY; weaponOrbTimer = WEAPON_ORB_EVERY * 0.6f; slowOrbTimer = SLOW_ORB_EVERY
         px = 0f; py = Y_MID; vx = 0f; vy = 0f
         distance = 0f; speed = BASE_SPEED
-        energy = MAX_ENERGY; weaponLevel = 1; shieldUp = false
+        energy = MAX_ENERGY; weaponLevel = 1; tractorOn = false
         kills = 0; bonus = 0; score = 0
         invuln = 1.5f; hitFlash = 0f; shake = 0f
         fireCooldown = 0f
@@ -144,13 +163,27 @@ class Game(private val prefs: SharedPreferences) {
         state = State.PLAYING
         stateTime = 0f
         play(Sfx.START)
-        showMessage("GOOD LUCK, PILOT", 2f)
+        if (tutorial) { nextTutorialStep(); invuln = 0f } else showMessage("GOOD LUCK, PILOT", 2f)
+    }
+
+    /** Leave the current run (pause menu "End game"). Keeps the high score, returns to the title. */
+    fun endRun() {
+        if (!tutorial && score > highScore) {
+            highScore = score
+            prefs.edit().putInt("high", score).apply()
+        }
+        entities.clear(); bolts.clear(); enemyBolts.clear()
+        tractorOn = false; firing = false; tractorHeld = false
+        tutorial = false
+        paused = false
+        state = State.TITLE
+        stateTime = 0f
     }
 
     private fun gameOver() {
         state = State.GAME_OVER
         stateTime = 0f
-        shieldUp = false
+        tractorOn = false
         explode(px, py, 0f, 0xFFFFB040.toInt(), 70, 14f)
         explode(px, py, 0f, 0xFFFFFFFF.toInt(), 25, 8f)
         shake = 1.6f
@@ -220,20 +253,22 @@ class Game(private val prefs: SharedPreferences) {
         slowTime = max(0f, slowTime - dt)
         val slowTarget = if (slowTime > 0f) SLOW_FACTOR else 1f
         slowMul += (slowTarget - slowMul) * min(1f, dt * 2.5f)
-        speed = baseSpeed * slowMul
+        speed = if (tutorial) 24f * slowMul else baseSpeed * slowMul
         val dz = speed * dt
         distance += dz
         progress += dz
         shieldOrbTimer -= dt; weaponOrbTimer -= dt; slowOrbTimer -= dt
         moveWorld(dz, dt)
-        spawn()
+        if (tutorial) updateTutorial(dt) else spawn()
 
-        // ---- shield: raising it drains energy; energy slowly rebuilds as you fly
-        val wasUp = shieldUp
-        shieldUp = shieldHeld && energy > 0.5f
-        if (shieldUp && !wasUp) play(Sfx.SHIELD_UP)
-        if (shieldUp) {
-            energy = max(0f, energy - SHIELD_DRAIN * dt)
+        // ---- tractor beam: drains energy while held, pulls nearby pickups toward the ship.
+        //      Shield energy itself is passive: it absorbs crashes and slowly rebuilds.
+        val wasOn = tractorOn
+        tractorOn = tractorHeld && energy > 0.5f
+        if (tractorOn && !wasOn) play(Sfx.TRACTOR_ON)
+        if (tractorOn) {
+            energy = max(0f, energy - TRACTOR_DRAIN * dt)
+            pullPickups(dt)
         } else {
             energy = min(MAX_ENERGY, energy + REGEN * dt)
         }
@@ -270,13 +305,13 @@ class Game(private val prefs: SharedPreferences) {
                         explode(e.cx, e.cy, e.z0, 0xFFFF6030.toInt(), 30, 9f)
                         play(Sfx.EXPLODE)
                     }
-                    if (state == State.PLAYING) onHit(HIT_DAMAGE, SHIELDED_DAMAGE)
+                    if (state == State.PLAYING) onHit(HIT_DAMAGE)
                 }
                 if (state != State.PLAYING) return
             }
         }
 
-        score = (distance * 0.5f).toInt() + kills * 100 + bonus
+        score = if (tutorial) 0 else (distance * 0.5f).toInt() + kills * 100 + bonus
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
     }
 
@@ -310,7 +345,7 @@ class Game(private val prefs: SharedPreferences) {
                 b.y > py - HY - 0.25f && b.y < py + HY + 0.25f
             ) {
                 b.alive = false
-                onHit(LASER_DAMAGE, LASER_SHIELDED)
+                onHit(LASER_DAMAGE)
                 if (state != State.PLAYING) return
             }
             if (b.z < CAM_Z + 1f) b.alive = false
@@ -334,24 +369,47 @@ class Game(private val prefs: SharedPreferences) {
         for (p in particles) p.z -= dz
     }
 
-    private fun onHit(damage: Float, shieldedDamage: Float) {
+    private fun onHit(damage: Float) {
         if (invuln > 0f) return
         if (energy <= 0.5f) {           // no shield power left: ship is destroyed
+            if (tutorial) {
+                energy = 60f
+                invuln = 1.2f; hitFlash = 1f; shake = 1f
+                play(Sfx.HIT)
+                showMessage("WITH NO SHIELD LEFT, THAT HIT WOULD END A REAL RUN", 3f)
+                return
+            }
             gameOver()
             return
         }
-        energy = max(0f, energy - if (shieldUp) shieldedDamage else damage)
+        energy = max(0f, energy - damage)
         invuln = 0.8f
-        if (shieldUp) shieldFlash = 1f else hitFlash = 1f
-        play(if (shieldUp) Sfx.SHIELD_HIT else Sfx.HIT)
-        shake = if (shieldUp) 0.5f else 1.0f
+        shieldFlash = 1f; hitFlash = 0.6f   // the shield bubble flashes as it absorbs the hit
+        play(Sfx.SHIELD_HIT); play(Sfx.HIT)
+        shake = 0.9f
         hapticPending = true
-        explode(px, py, 0.6f, if (shieldUp) 0xFF60E8FF.toInt() else 0xFFFFC060.toInt(), 22, 7f)
+        explode(px, py, 0.6f, 0xFF60E8FF.toInt(), 22, 7f)
         if (energy <= 0.5f) showMessage("SHIELD DEPLETED", 2f)
+    }
+
+    /** Pickups within range drift toward the ship while the tractor beam is on. */
+    private fun pullPickups(dt: Float) {
+        for (e in entities) {
+            if (!e.alive || !e.isPickup || e.z0 > TRACTOR_RANGE || e.z1 < -HZ) continue
+            val dx = px - e.cx; val dy = py - e.cy
+            val dist = sqrt(dx * dx + dy * dy)
+            if (dist < 0.01f) continue
+            val step = min(dist, (TRACTOR_PULL + dist * 2.2f) * dt)
+            val mx = dx / dist * step; val my = dy / dist * step
+            e.x0 += mx; e.x1 += mx; e.y0 += my; e.y1 += my
+            e.tractored = true
+        }
     }
 
     private fun collect(e: Entity) {
         e.alive = false
+        if (tractorOn && e.tractored) tutTractorCatch = true
+        lastCollected = e.kind
         if (e.kind == Kind.PICKUP_SLOW) {
             slowTime = SLOW_DURATION
             progress = max(0f, progress - SLOW_ROLLBACK)
@@ -592,5 +650,121 @@ class Game(private val prefs: SharedPreferences) {
             ) return true
         }
         return false
+    }
+
+    // ------------------------------------------------------------ tutorial
+
+    private val TUT_TEXT = arrayOf(
+        "TILT your phone LEFT and RIGHT to steer.\nTouch both sides of the trench.",
+        "TILT FORWARD and BACK to dive and climb.\nFly low, then fly high.",
+        "HOLD the LEFT side of the screen to fire lasers.\nShoot down the 3 red drones.",
+        "RED STRIPES are dangerous. Each crash costs half your shield.\nFly over, under or around these.",
+        "CYAN ORBS restore shield energy.\nFly into this one.",
+        "HOLD the RIGHT side of the screen for the TRACTOR BEAM.\nIt pulls nearby orbs to you but drains energy. Catch this orb with it.",
+        "WALL TURRETS glow and whine, then fire at you.\nKeep moving to dodge the shot.",
+        "GREEN orbs upgrade your lasers. VIOLET hourglass orbs slow everything down.\nGrab them if you can.",
+        "TRAINING COMPLETE!\nTap the screen to return to the title."
+    )
+
+    private fun tutAhead(e: Entity): Boolean = e.alive && e.z1 > -HZ
+
+    private fun tutAdd(kind: Kind, x0: Float, x1: Float, y0: Float, y1: Float, z: Float, depth: Float): Entity {
+        val e = addBox(kind, x0, x1, y0, y1, z, depth)
+        tutSpawned.add(e)
+        return e
+    }
+
+    private fun tutOrb(kind: Kind, x: Float, y: Float, z: Float) = tutAdd(kind, x - 0.6f, x + 0.6f, y - 0.6f, y + 0.6f, z, 1.2f)
+
+    private fun nextTutorialStep() {
+        tutStep++
+        tutTimer = 0f; tutFlags = 0
+        tutSpawned.clear()
+        tutTractorCatch = false
+        lastCollected = null
+        tutText = TUT_TEXT[min(tutStep, TUT_TEXT.size - 1)]
+        if (tutStep > 0) play(Sfx.PICKUP)
+        when (tutStep) {
+            2 -> { tutKills = kills; spawnTutorialDrones(3) }
+            3 -> spawnTutorialObstacles()
+            4 -> { energy = min(energy, 55f); tutOrb(Kind.PICKUP_SHIELD, rand(-1.5f, 1.5f), Y_MID, 110f) }
+            5 -> spawnTractorOrb()
+            6 -> {
+                val left = rng.nextBoolean()
+                val e = if (left) tutAdd(Kind.TURRET, -HALF_W, -HALF_W + 0.7f, 4.6f, 5.8f, 120f, 1.4f)
+                else tutAdd(Kind.TURRET, HALF_W - 0.7f, HALF_W, 4.6f, 5.8f, 120f, 1.4f)
+                e.fireZ = 55f
+            }
+            7 -> {
+                tutOrb(Kind.PICKUP_WEAPON, -2.5f, 4f, 110f)
+                tutOrb(Kind.PICKUP_SLOW, 2.5f, 6f, 150f)
+            }
+            8 -> { tutComplete = true; play(Sfx.UPGRADE) }
+        }
+    }
+
+    private fun spawnTutorialDrones(n: Int) {
+        for (i in 0 until n) {
+            val x = -3f + i * 3f
+            val y = 3.5f + (i % 2) * 2.5f
+            val e = tutAdd(Kind.DRONE, x - 0.6f, x + 0.6f, y - 0.6f, y + 0.6f, 120f + i * 22f, 1.2f)
+            e.hp = 1; e.baseX = x
+        }
+    }
+
+    private fun spawnTutorialObstacles() {
+        tutAdd(Kind.BRIDGE, -HALF_W, HALF_W, 4.2f, 5.2f, 110f, 1.6f)
+        tutAdd(Kind.RAISED_FLOOR, -HALF_W, HALF_W, 0f, 3f, 165f, 6f)
+        tutAdd(Kind.SIDE_BLOCK, -HALF_W, -1f, 0f, TOP, 225f, 3f)
+        tutAdd(Kind.PILLAR, 1f, 3f, 0f, TOP, 275f, 2.5f)
+    }
+
+    private fun spawnTractorOrb() {
+        energy = max(energy, 60f)
+        val x = if (px > 0f) -4.3f else 4.3f
+        tutOrb(Kind.PICKUP_SHIELD, x, if (py > Y_MID) 1.8f else 8.2f, 130f)
+    }
+
+    private fun updateTutorial(dt: Float) {
+        tutTimer += dt
+        if (tutStep >= TUT_TEXT.size - 1) return
+        val anyAhead = tutSpawned.any { tutAhead(it) }
+        var done = false
+        when (tutStep) {
+            0 -> {
+                if (px < -3.2f) tutFlags = tutFlags or 1
+                if (px > 3.2f) tutFlags = tutFlags or 2
+                done = tutFlags == 3
+            }
+            1 -> {
+                if (py < 2.6f) tutFlags = tutFlags or 1
+                if (py > 7f) tutFlags = tutFlags or 2
+                done = tutFlags == 3
+            }
+            2 -> {
+                val got = kills - tutKills
+                tutText = TUT_TEXT[2] + "  ($got / 3)"
+                if (got >= 3) done = true
+                else if (!anyAhead) { tutSpawned.clear(); spawnTutorialDrones(3 - got) }
+            }
+            3 -> done = !anyAhead && tutTimer > 2f
+            4 -> {
+                if (lastCollected == Kind.PICKUP_SHIELD) done = true
+                else if (!anyAhead) { tutSpawned.clear(); tutOrb(Kind.PICKUP_SHIELD, rand(-1.5f, 1.5f), Y_MID, 110f) }
+            }
+            5 -> {
+                if (tutTractorCatch) done = true
+                else if (!anyAhead) {
+                    if (lastCollected != null) showMessage("HOLD THE RIGHT SIDE TO PULL IT IN", 2f)
+                    tutSpawned.clear(); lastCollected = null; spawnTractorOrb()
+                }
+            }
+            6 -> done = !anyAhead && enemyBolts.isEmpty() && tutTimer > 2f
+            7 -> done = !anyAhead && tutTimer > 2f
+        }
+        if (done) {
+            if (tutFlags != -1) { tutFlags = -1; tutTimer = 0f; showMessage("NICE!", 1f) }
+        }
+        if (tutFlags == -1 && tutTimer > 1.2f) nextTutorialStep()
     }
 }

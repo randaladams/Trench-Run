@@ -79,7 +79,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         synchronized(game) {
             game.pause()
             game.firing = false
-            game.shieldHeld = false
+            game.tractorHeld = false
         }
         stopLoop()
         sound.stopLoops()
@@ -126,7 +126,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 sound.updateLoops(
                     flying || game.state == Game.State.TITLE,
                     (game.speed - Game.BASE_SPEED) / (Game.MAX_SPEED - Game.BASE_SPEED),
-                    flying && game.shieldUp
+                    flying && game.tractorOn
                 )
             }
 
@@ -214,7 +214,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
         val paused = game.paused
         game.firing = left && !paused
-        game.shieldHeld = right && !paused
+        game.tractorHeld = right && !paused
         return true
     }
 
@@ -222,6 +222,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private fun handleButton(x: Float, y: Float): Boolean {
         synchronized(game) {
             if (game.state != Game.State.PLAYING) return false
+            if (game.paused && renderer.endRect.contains(x, y)) {
+                game.endRun()
+                return true
+            }
             if (renderer.pauseRect.contains(x, y)) {
                 if (game.paused) { calibrate(); game.paused = false } else game.pause()
                 return true
@@ -248,12 +252,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                         game.invertPitch = !game.invertPitch
                     } else if (renderer.soundRect.contains(x, y)) {
                         toggleSound()
+                    } else if (renderer.tutorialRect.contains(x, y)) {
+                        calibrate()
+                        game.start(asTutorial = true)
                     } else {
                         calibrate()
                         game.start()
                     }
                 }
-                Game.State.PLAYING -> if (game.paused) { calibrate(); game.paused = false }
+                Game.State.PLAYING -> when {
+                    game.paused -> { calibrate(); game.paused = false }
+                    game.tutComplete -> game.endRun()
+                }
                 Game.State.GAME_OVER -> if (game.stateTime > 1.2f) { calibrate(); game.start() }
             }
         }
@@ -269,7 +279,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_DPAD_UP -> keyY = 1f
             KeyEvent.KEYCODE_DPAD_DOWN -> keyY = -1f
             KeyEvent.KEYCODE_SPACE -> { game.firing = true; return true }
-            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_Z -> { game.shieldHeld = true; return true }
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_Z -> { game.tractorHeld = true; return true }
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> { handleTap(-1f, -1f); return true }
             else -> return super.onKeyDown(keyCode, event)
         }
@@ -283,7 +293,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> keyX = 0f
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> keyY = 0f
             KeyEvent.KEYCODE_SPACE -> { game.firing = false; return true }
-            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_Z -> { game.shieldHeld = false; return true }
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_Z -> { game.tractorHeld = false; return true }
             else -> return super.onKeyUp(keyCode, event)
         }
         game.inputRoll = keyX; game.inputPitch = keyY

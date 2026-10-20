@@ -36,6 +36,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         const val SHIELD = 0xFF40E0FF.toInt()               // good: cyan
         const val WEAPON = 0xFF7CFF4A.toInt()               // good: green
         const val SLOW = 0xFFC08CFF.toInt()                 // good: violet
+        const val TRACTOR = 0xFF7FB8FF.toInt()              // tractor beam: soft blue
         private const val HUD = 0xFF9FF5C8.toInt()
         private const val DANGER = 0xFFFF4A4A.toInt()
     }
@@ -60,6 +61,10 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     /** In-game buttons, bottom center (read by GameView). */
     val pauseRect = RectF()
     val soundBtnRect = RectF()
+    /** Pause-menu and title buttons (read by GameView). */
+    val resumeRect = RectF()
+    val endRect = RectF()
+    val tutorialRect = RectF()
 
     private val wallTex = Textures.walls(4)
     private val floorTex = Textures.floors(2)
@@ -184,6 +189,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         for (e in sorted) if (e.z1 >= 0f) drawEntity(c, e, g)
         for (b in g.bolts) drawBolt(c, b)
         for (b in g.enemyBolts) if (b.z >= 0f) drawEnemyBolt(c, b)
+        if (g.tractorOn) drawTractor(c, g)
         if (g.state != Game.State.GAME_OVER) drawShip(c, g)
         for (b in g.enemyBolts) if (b.z < 0f) drawEnemyBolt(c, b)
         for (e in sorted) if (e.z1 < 0f) drawEntity(c, e, g)
@@ -194,8 +200,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             Game.State.PLAYING -> {
                 drawCrosshair(c, g)
                 drawHud(c, g)
-                if (g.paused) drawPaused(c)
+                if (g.tutorial) drawTutorial(c, g)
                 drawButtons(c, g)
+                if (g.paused) drawPaused(c, g)
             }
             Game.State.GAME_OVER -> { drawHud(c, g); drawGameOver(c, g) }
         }
@@ -623,8 +630,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         c.drawCircle(0.2f, 0.08f, 0.09f * flick, fill)
 
         // shield bubble
-        if (g.shieldUp || g.shieldFlash > 0f) {
-            val a = if (g.shieldUp) 1f else g.shieldFlash
+        if (g.shieldFlash > 0f) {
+            val a = g.shieldFlash
             val shimmer = 0.85f + 0.15f * sin(g.time * 25f)
             rect.set(-1.75f, -0.95f, 1.75f, 0.85f)
             fill.color = withAlpha(SHIELD, (0.16f + 0.3f * g.shieldFlash) * a * shimmer)
@@ -677,7 +684,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             frac < 0.25f -> 0xFFFF9A3C.toInt()
             else -> SHIELD
         }
-        text(c, if (g.shieldUp) "SHIELD  [ACTIVE]" else "SHIELD", pad, pad + ts * 0.8f, ts * 0.8f, barColor, Paint.Align.LEFT)
+        text(c, if (g.tractorOn) "SHIELD  (tractor draining)" else "SHIELD", pad, pad + ts * 0.8f, ts * 0.8f, barColor, Paint.Align.LEFT)
         rect.set(pad, by, pad + barW, by + barH)
         fill.color = 0x55FFFFFF
         c.drawRect(rect, fill)
@@ -697,12 +704,15 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             c.drawRect(rect, fill)
         }
 
-        // score
-        text(c, "%,d".format(g.score), w - pad, pad + ts, ts * 1.2f, 0xFFFFFFFF.toInt(), Paint.Align.RIGHT)
-        text(c, "%,d m".format((g.distance).toInt()), w - pad, pad + ts * 2.2f, ts * 0.75f, 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
-        val spd = (g.speed * 10f).toInt()
-        text(c, "SPEED %d".format(spd), w - pad, pad + ts * 3.2f, ts * 0.75f,
-            if (g.slowTime > 0f) SLOW else 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
+        if (g.tutorial) {   // no score during training
+            text(c, "TRAINING  %d / %d".format(min(g.tutStep + 1, g.tutSteps - 1), g.tutSteps - 1), w - pad, pad + ts, ts * 1.0f, 0xFFFFD27A.toInt(), Paint.Align.RIGHT)
+        } else {
+            text(c, "%,d".format(g.score), w - pad, pad + ts, ts * 1.2f, 0xFFFFFFFF.toInt(), Paint.Align.RIGHT)
+            text(c, "%,d m".format((g.distance).toInt()), w - pad, pad + ts * 2.2f, ts * 0.75f, 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
+            val spd = (g.speed * 10f).toInt()
+            text(c, "SPEED %d".format(spd), w - pad, pad + ts * 3.2f, ts * 0.75f,
+                if (g.slowTime > 0f) SLOW else 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
+        }
 
         if (g.state != Game.State.PLAYING) return
 
@@ -730,9 +740,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         line.color = withAlpha(0xFFFF6A5A.toInt(), if (g.firing) 0.9f else 0.35f)
         c.drawCircle(pad + zr, zy, zr, line)
         text(c, "FIRE", pad + zr, zy + ts * 0.3f, ts * 0.75f, line.color)
-        line.color = withAlpha(SHIELD, if (g.shieldUp) 0.9f else 0.35f)
+        line.color = withAlpha(TRACTOR, if (g.tractorOn) 0.9f else 0.35f)
         c.drawCircle(w - pad - zr, zy, zr, line)
-        text(c, "SHIELD", w - pad - zr, zy + ts * 0.3f, ts * 0.7f, line.color)
+        text(c, "TRACTOR", w - pad - zr, zy + ts * 0.3f, ts * 0.62f, line.color)
 
         // damage flash
         if (g.hitFlash > 0f) {
@@ -799,7 +809,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             if (g.invertPitch) "TILT FORWARD / BACK ...... climb / dive"
             else "TILT FORWARD / BACK ...... dive / climb",
             "HOLD LEFT SIDE ........... fire lasers",
-            "HOLD RIGHT SIDE .......... shield (uses energy)"
+            "HOLD RIGHT SIDE .......... tractor beam: pulls orbs in (uses energy)"
         )
         var y = h * 0.29f
         for (l in lines) { text(c, l, w / 2f, y, ts * 0.78f, 0xFFE6ECF5.toInt()); y += ts * 1.1f }
@@ -825,15 +835,22 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         txt.textSize = ts * 0.72f
         val pitchLabel = if (g.invertPitch) "PITCH: FORWARD = CLIMB" else "PITCH: FORWARD = DIVE"
         val soundLabel = if (g.soundOn) "SOUND: ON" else "SOUND: OFF"
+        val tutLabel = "TUTORIAL"
         val pw = txt.measureText(pitchLabel) + dp(28f)
         val sw = txt.measureText(soundLabel) + dp(28f)
+        val tw = txt.measureText(tutLabel) + dp(36f)
         val gap = dp(16f)
-        val left = w / 2f - (pw + sw + gap) / 2f
-        toggleRect.set(left, y - ts, left + pw, y + ts * 0.5f)
-        soundRect.set(left + pw + gap, y - ts, left + pw + gap + sw, y + ts * 0.5f)
+        val left = w / 2f - (tw + pw + sw + gap * 2) / 2f
+        tutorialRect.set(left, y - ts, left + tw, y + ts * 0.5f)
+        toggleRect.set(left + tw + gap, y - ts, left + tw + gap + pw, y + ts * 0.5f)
+        soundRect.set(toggleRect.right + gap, y - ts, toggleRect.right + gap + sw, y + ts * 0.5f)
+        fill.color = 0x40FFD27A; c.drawRoundRect(tutorialRect, dp(8f), dp(8f), fill)
+        line.color = 0xFFFFD27A.toInt(); line.strokeWidth = dp(2f)
+        c.drawRoundRect(tutorialRect, dp(8f), dp(8f), line)
         line.color = HUD; line.strokeWidth = dp(1.5f)
         c.drawRoundRect(toggleRect, dp(8f), dp(8f), line)
         c.drawRoundRect(soundRect, dp(8f), dp(8f), line)
+        text(c, tutLabel, tutorialRect.centerX(), y, ts * 0.72f, 0xFFFFD27A.toInt())
         text(c, pitchLabel, toggleRect.centerX(), y, ts * 0.72f, HUD)
         text(c, soundLabel, soundRect.centerX(), y, ts * 0.72f, HUD)
         text(c, "(tap a button to change it)", w / 2f, y + ts * 1.2f, ts * 0.6f, 0x99FFFFFF.toInt())
@@ -844,11 +861,84 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         text(c, buildLabel, w - dp(10f), h - dp(8f), ts * 0.55f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
     }
 
-    private fun drawPaused(c: Canvas) {
-        dim(c, 0.55f)
+    private fun drawPaused(c: Canvas, g: Game) {
+        dim(c, 0.6f)
         val ts = max(dp(12f), h / 26f)
-        text(c, "PAUSED", w / 2f, h * 0.45f, ts * 2f, 0xFFFFFFFF.toInt())
-        text(c, "Tap anywhere to resume (tilt is re-centered)", w / 2f, h * 0.58f, ts * 0.8f, 0xCCFFFFFF.toInt())
+        text(c, if (g.tutorial) "TRAINING PAUSED" else "PAUSED", w / 2f, h * 0.3f, ts * 2f, 0xFFFFFFFF.toInt())
+        val bw = max(dp(150f), w * 0.2f); val bh = ts * 2.2f; val gap = dp(24f)
+        val top = h * 0.42f
+        resumeRect.set(w / 2f - bw - gap / 2f, top, w / 2f - gap / 2f, top + bh)
+        endRect.set(w / 2f + gap / 2f, top, w / 2f + gap / 2f + bw, top + bh)
+        fill.color = 0x3340E0FF; c.drawRoundRect(resumeRect, dp(12f), dp(12f), fill)
+        line.color = SHIELD; line.strokeWidth = dp(2f); c.drawRoundRect(resumeRect, dp(12f), dp(12f), line)
+        text(c, "RESUME", resumeRect.centerX(), resumeRect.centerY() + ts * 0.35f, ts, SHIELD)
+        fill.color = 0x33FF4A4A; c.drawRoundRect(endRect, dp(12f), dp(12f), fill)
+        line.color = DANGER; c.drawRoundRect(endRect, dp(12f), dp(12f), line)
+        text(c, if (g.tutorial) "EXIT TRAINING" else "END GAME", endRect.centerX(), endRect.centerY() + ts * 0.35f, ts * (if (g.tutorial) 0.8f else 1f), DANGER)
+        text(c, "Resuming re-centers your tilt", w / 2f, top + bh + ts * 1.6f, ts * 0.7f, 0xAAFFFFFF.toInt())
+        if (!g.tutorial) text(c, "Ending keeps your high score", w / 2f, top + bh + ts * 2.6f, ts * 0.7f, 0xAAFFFFFF.toInt())
+    }
+
+    /** Instruction panel for the current training step. */
+    private fun drawTutorial(c: Canvas, g: Game) {
+        if (g.paused) return
+        val ts = max(dp(11f), h / 30f)
+        val lines = g.tutText.split("\n")
+        txt.textSize = ts
+        var maxW = 0f
+        for ((i, l) in lines.withIndex()) maxW = max(maxW, txt.measureText(l) * (if (i == 0) 1f else 0.85f))
+        val bw = min(w * 0.9f, maxW + dp(36f))
+        val top = h * 0.25f
+        val bh = ts * (1.0f + 1.35f * lines.size) + dp(10f)
+        rect.set(w / 2f - bw / 2f, top, w / 2f + bw / 2f, top + bh)
+        fill.color = 0xB0000000.toInt()
+        c.drawRoundRect(rect, dp(12f), dp(12f), fill)
+        line.color = if (g.tutComplete) 0xFFFFD27A.toInt() else HUD; line.strokeWidth = dp(1.5f)
+        c.drawRoundRect(rect, dp(12f), dp(12f), line)
+        var y = top + ts * 1.4f
+        for ((i, l) in lines.withIndex()) {
+            text(c, l, w / 2f, y, if (i == 0) ts else ts * 0.85f, if (i == 0) 0xFFFFFFFF.toInt() else 0xFFCFE8DA.toInt())
+            y += ts * 1.35f
+        }
+    }
+
+    /** Blue beams from the ship to every orb the tractor beam is pulling, plus a faint cone. */
+    private fun drawTractor(c: Canvas, g: Game) {
+        val shipX = sx(g.px, 0f); val shipY = sy(g.py, 0f)
+        val pulse = 0.6f + 0.4f * sin(g.time * 18f)
+        // reach cone toward the range limit
+        val rz = Game.TRACTOR_RANGE
+        val spread = 3.5f
+        path.reset()
+        path.moveTo(shipX, shipY)
+        path.lineTo(sx(g.px - spread, rz), sy(g.py + spread * 0.6f, rz))
+        path.lineTo(sx(g.px + spread, rz), sy(g.py + spread * 0.6f, rz))
+        path.lineTo(sx(g.px + spread, rz), sy(g.py - spread * 0.6f, rz))
+        path.lineTo(sx(g.px - spread, rz), sy(g.py - spread * 0.6f, rz))
+        path.close()
+        fill.color = withAlpha(TRACTOR, 0.07f + 0.04f * pulse)
+        c.drawPath(path, fill)
+        for (e in g.entities) {
+            if (!e.alive || !e.isPickup || !e.tractored || e.z0 > Game.TRACTOR_RANGE || e.z1 < 0f) continue
+            val z = max((e.z0 + e.z1) * 0.5f, near + 0.2f)
+            val ex = sx(e.cx, z); val ey = sy(e.cy, z)
+            line.color = withAlpha(TRACTOR, 0.35f * pulse)
+            line.strokeWidth = dp(10f)
+            c.drawLine(shipX, shipY, ex, ey, line)
+            line.color = withAlpha(0xFFE0F0FF.toInt(), 0.8f)
+            line.strokeWidth = dp(2f)
+            // a wavy core line
+            val n = 10
+            var lx = shipX; var ly = shipY
+            for (i in 1..n) {
+                val t = i / n.toFloat()
+                val wob = sin(t * 12f + g.time * 30f) * dp(4f) * (1f - t)
+                val nx = shipX + (ex - shipX) * t + wob
+                val ny = shipY + (ey - shipY) * t - wob
+                c.drawLine(lx, ly, nx, ny, line)
+                lx = nx; ly = ny
+            }
+        }
     }
 
     private fun drawGameOver(c: Canvas, g: Game) {
