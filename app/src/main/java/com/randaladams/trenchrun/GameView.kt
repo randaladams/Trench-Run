@@ -300,6 +300,8 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                         if (renderer.confirmYesRect.contains(x, y)) game.clearScores()
                         else if (renderer.confirmNoRect.contains(x, y)) { game.confirmClear = false }
                     }
+                    renderer.tabScoresRect.contains(x, y) -> { game.scoresTab = 0 }
+                    renderer.tabBadgesRect.contains(x, y) -> { game.scoresTab = 1 }
                     renderer.backRect.contains(x, y) -> game.backToTitle()
                     renderer.clearRect.contains(x, y) -> { game.confirmClear = true }
                 }

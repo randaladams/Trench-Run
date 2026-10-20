@@ -31,6 +31,7 @@ class ScoreBook(private val prefs: SharedPreferences) {
             Badge("grad", "Graduate", "Complete the tutorial", 0xFFFFD27A.toInt()),
             Badge("km1", "Trench Rookie", "Fly 1,000 m in one run", 0xFF8FB8FF.toInt()),
             Badge("km3", "Trench Veteran", "Fly 3,000 m in one run", 0xFF6F9BFF.toInt()),
+            Badge("ace", "Ace Pilot", "Score 5,000 in one run", 0xFFFFB060.toInt()),
             Badge("sharp", "Sharpshooter", "Destroy 25 drones in one run", 0xFFFF7050.toInt()),
             Badge("deflector", "Deflector", "Shoot down 5 turret lasers in total", 0xFFFF9A6A.toInt()),
             Badge("armed", "Fully Armed", "Reach Laser Mk IV", 0xFF7CFF4A.toInt()),
@@ -47,7 +48,10 @@ class ScoreBook(private val prefs: SharedPreferences) {
             Badge("dodger", "Dodger", "Dodge 5 turret shots in one run", 0xFFFFA040.toInt(), true),
             Badge("survivor", "Survivor", "Recover to 50 shield after it hit zero", 0xFFE0E6EE.toInt(), true),
             Badge("purist", "Purist", "Fly 2,000 m without using the tractor beam", 0xFFA8C8E8.toInt(), true),
-            Badge("zen", "Zen Master", "Fly 5,000 m in one Zen run", 0xFF9FE8D0.toInt(), true)
+            Badge("zen", "Zen Master", "Fly 5,000 m in one Zen run", 0xFF9FE8D0.toInt(), true),
+            Badge("marathon", "Marathon", "Fly 50,000 m in total", 0xFF80D8FF.toInt(), true),
+            Badge("slipstream", "Slipstream", "Reach top speed", 0xFFFFF080.toInt(), true),
+            Badge("ironhull", "Iron Hull", "Survive 6 crashes in one run", 0xFFB0B8C8.toInt(), true)
         )
     }
 
@@ -56,6 +60,8 @@ class ScoreBook(private val prefs: SharedPreferences) {
         set(v) { field = v; prefs.edit().putBoolean("pro", v).apply() }
 
     var laserKills = 0
+        private set
+    var totalDistance = 0L
         private set
     var zenBest = 0
         private set
@@ -89,6 +95,7 @@ class ScoreBook(private val prefs: SharedPreferences) {
         totalKills = prefs.getInt("totalKills", 0)
         runs = prefs.getInt("runs", 0)
         laserKills = prefs.getInt("laserKills", 0)
+        totalDistance = prefs.getLong("totalDistance", 0L)
         zenBest = prefs.getInt("zenBest", 0)
     }
 
@@ -103,6 +110,7 @@ class ScoreBook(private val prefs: SharedPreferences) {
             .putInt("totalKills", totalKills)
             .putInt("runs", runs)
             .putInt("laserKills", laserKills)
+            .putLong("totalDistance", totalDistance)
             .putInt("zenBest", zenBest)
             .apply()
     }
@@ -110,6 +118,7 @@ class ScoreBook(private val prefs: SharedPreferences) {
     /** Records a finished run. Returns true if it set a new high score. */
     fun record(run: RunRecord, laserKillsThisRun: Int): Boolean {
         laserKills += laserKillsThisRun
+        totalDistance += run.distance
         recent.add(0, run)
         while (recent.size > RECENT) recent.removeAt(recent.size - 1)
         runs++
@@ -137,7 +146,7 @@ class ScoreBook(private val prefs: SharedPreferences) {
     /** Clears scores and badges. The edition (free/pro) is kept. */
     fun clearAll() {
         recent.clear(); earned.clear(); best = null
-        totalKills = 0; runs = 0; laserKills = 0; zenBest = 0
+        totalKills = 0; runs = 0; laserKills = 0; zenBest = 0; totalDistance = 0L
         prefs.edit().remove("high").apply()
         save()
     }

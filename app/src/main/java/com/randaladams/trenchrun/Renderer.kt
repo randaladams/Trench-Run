@@ -70,6 +70,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val clearRect = RectF()
     val confirmYesRect = RectF()
     val confirmNoRect = RectF()
+    val tabScoresRect = RectF()
+    val tabBadgesRect = RectF()
     val zenRect = RectF()
     val startRect = RectF()
     val exitRect = RectF()
@@ -966,101 +968,35 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     }
 
     private fun drawScores(c: Canvas, g: Game) {
-        dim(c, 0.8f)
+        dim(c, 0.82f)
         val book = g.book
-        val ts = max(dp(10f), h / 34f)
-        val pad = dp(20f)
-        text(c, "SCOREBOARD", w * 0.25f, pad + ts * 1.4f, ts * 1.6f, 0xFFFFD27A.toInt())
-        text(c, "BADGES  %d / %d".format(book.earned.size, ScoreBook.BADGES.size), w * 0.72f, pad + ts * 1.4f, ts * 1.6f, 0xFFFFD27A.toInt())
-
-        // ---- left: 19 most recent runs + the all-time best as #20
-        val lx = pad; val rx = w * 0.48f
-        val colScore = lx + (rx - lx) * 0.36f
-        val colDist = lx + (rx - lx) * 0.58f
-        val colKills = lx + (rx - lx) * 0.74f
-        var y = pad + ts * 3.2f
-        val rowH = (h - bannerSpace(g) - y - ts * 5.2f) / 21f
-        val small = min(ts * 0.85f, rowH * 0.78f)
-        text(c, "#", lx, y, small, 0x99FFFFFF.toInt(), Paint.Align.LEFT)
-        text(c, "WHEN", lx + small * 2f, y, small, 0x99FFFFFF.toInt(), Paint.Align.LEFT)
-        text(c, "SCORE", colScore, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
-        text(c, "DIST", colDist, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
-        text(c, "DRONES", colKills, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
-        y += rowH
-        // #1: high score, always
-        rect.set(lx - dp(6f), y - rowH * 0.8f, rx, y + rowH * 0.35f)
-        fill.color = 0x30FFD27A; c.drawRoundRect(rect, dp(6f), dp(6f), fill)
-        val best = book.best
+        val ts = max(dp(10f), h / 30f)
+        val pad = dp(24f)
         val gold = 0xFFFFD27A.toInt()
-        text(c, " 1", lx, y, small, gold, Paint.Align.LEFT)
-        if (best != null) {
-            text(c, if (best.time > 0) "HIGH  " + dateFmt.format(java.util.Date(best.time)) else "HIGH SCORE", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
-            text(c, "%,d".format(best.score), colScore, y, small, gold, Paint.Align.RIGHT)
-            if (best.distance > 0) text(c, "%,d m".format(best.distance), colDist, y, small, gold, Paint.Align.RIGHT)
-            if (best.time > 0) text(c, "${best.kills}", colKills, y, small, gold, Paint.Align.RIGHT)
-        } else text(c, "HIGH SCORE  -", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
-        y += rowH
-        // #2-20: the 19 most recent runs, newest first
-        for (i in 0 until ScoreBook.RECENT) {
-            val r = book.recent.getOrNull(i)
-            val col = if (r != null && i == 0) 0xFFFFFFFF.toInt() else 0xCCDDE6F0.toInt()
-            text(c, "%2d".format(i + 2), lx, y, small, 0x77FFFFFF, Paint.Align.LEFT)
-            if (r != null) {
-                text(c, dateFmt.format(java.util.Date(r.time)), lx + small * 2f, y, small, col, Paint.Align.LEFT)
-                text(c, "%,d".format(r.score), colScore, y, small, col, Paint.Align.RIGHT)
-                text(c, "%,d m".format(r.distance), colDist, y, small, col, Paint.Align.RIGHT)
-                text(c, "${r.kills}", colKills, y, small, col, Paint.Align.RIGHT)
-                if (book.best != null && r == book.best) text(c, "BEST", colKills + small, y, small * 0.8f, 0xFFFFD27A.toInt(), Paint.Align.LEFT)
-            } else {
-                text(c, "-", lx + small * 2f, y, small, 0x44FFFFFF, Paint.Align.LEFT)
-            }
-            y += rowH
-        }
-        // ---- right: badge grid 4 x 4
-        val gx0 = w * 0.51f; val gx1 = w - pad
-        val gy0 = pad + ts * 2.8f; val gy1 = h - bannerSpace(g) - ts * 5f
-        val cols = 5; val rows = (ScoreBook.BADGES.size + cols - 1) / cols
-        val cellW = (gx1 - gx0) / cols; val cellH = (gy1 - gy0) / rows
-        val mr = min(cellW, cellH) * 0.2f
-        val nameSize = min(ts * 0.8f, cellW / 11f)
-        val descSize = nameSize * 0.78f
-        for ((i, b) in ScoreBook.BADGES.withIndex()) {
-            val cx = gx0 + cellW * (i % cols + 0.5f)
-            val cy = gy0 + cellH * (i / cols) + mr * 1.5f
-            val got = book.earned.contains(b.id)
-            medal(c, cx, cy, mr, b, got)
-            if (b.pro && !g.pro) {   // locked behind the Pro edition
-                rect.set(cx + mr * 0.2f, cy - mr * 1.25f, cx + mr * 1.6f, cy - mr * 0.45f)
-                fill.color = 0xFFFFD27A.toInt(); c.drawRoundRect(rect, dp(4f), dp(4f), fill)
-                text(c, "PRO", rect.centerX(), rect.bottom - mr * 0.18f, mr * 0.55f, 0xFF1A1A22.toInt())
-            }
-            text(c, b.name, cx, cy + mr + nameSize * 1.3f, nameSize, if (got) b.color else 0x88FFFFFF.toInt())
-            // wrap description onto up to two lines
-            txt.textSize = descSize
-            val words = b.desc.split(" ")
-            var l1 = ""; var l2 = ""
-            for (wd in words) {
-                if (l2.isEmpty() && txt.measureText("$l1 $wd".trim()) < cellW * 0.92f) l1 = "$l1 $wd".trim() else l2 = "$l2 $wd".trim()
-            }
-            val dc = if (got) 0xCCFFFFFF.toInt() else 0x66FFFFFF
-            text(c, l1, cx, cy + mr + nameSize * 1.3f + descSize * 1.25f, descSize, dc)
-            if (l2.isNotEmpty()) text(c, l2, cx, cy + mr + nameSize * 1.3f + descSize * 2.45f, descSize, dc)
-        }
 
-        // ---- bottom: stats, buttons, version
-        val by = h - bannerSpace(g) - ts * 3.6f
-        text(c, "Runs: %,d   Drones: %,d   Lasers shot down: %,d".format(book.runs, book.totalKills, book.laserKills) +
-            (if (g.pro && book.zenBest > 0) "   Zen best: %,d m".format(book.zenBest) else ""), w * 0.25f, by - ts * 0.4f, ts * 0.75f, 0x99FFFFFF.toInt())
-        val bw = max(dp(120f), w * 0.13f); val bh = ts * 1.9f
+        // ---- tabs
+        val tw = w * 0.24f; val th = ts * 1.9f; val tgap = dp(14f)
+        tabScoresRect.set(w / 2f - tw - tgap / 2f, pad, w / 2f - tgap / 2f, pad + th)
+        tabBadgesRect.set(w / 2f + tgap / 2f, pad, w / 2f + tgap / 2f + tw, pad + th)
+        val badgeTotal = ScoreBook.BADGES.size
+        bigButton(c, tabScoresRect, "SCOREBOARD", gold, ts * 0.95f, if (g.scoresTab == 0) 0.45f else 0.08f)
+        bigButton(c, tabBadgesRect, "BADGES  %d / %d".format(book.earned.size, badgeTotal), gold, ts * 0.95f, if (g.scoresTab == 1) 0.45f else 0.08f)
+
+        val top = pad + th + ts * 1.4f
+        val by = h - bannerSpace(g) - ts * 2.6f     // bottom buttons
+        val bottom = by - ts * 1.6f
+        if (g.scoresTab == 0) drawScoreTable(c, g, top, bottom, ts, pad)
+        else drawBadgeGrid(c, g, top, bottom, ts, pad)
+
+        // ---- bottom: buttons, version
+        val bw = max(dp(120f), w * 0.15f); val bh = ts * 1.8f
         backRect.set(w / 2f - bw - dp(10f), by, w / 2f - dp(10f), by + bh)
         clearRect.set(w / 2f + dp(10f), by, w / 2f + dp(10f) + bw, by + bh)
-        button(c, backRect, "BACK", HUD, ts * 0.85f)
-        button(c, clearRect, "CLEAR ALL", DANGER, ts * 0.85f)
-        val vl = versionLine(g)
-        txt.textSize = ts * 0.6f
-        text(c, vl, w - pad, h - dp(8f), ts * 0.6f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
+        bigButton(c, backRect, "BACK", HUD, ts * 0.85f, 0.15f)
+        bigButton(c, clearRect, "CLEAR ALL", DANGER, ts * 0.85f, 0.12f)
+        text(c, versionLine(g), w - dp(14f), h - dp(8f), ts * 0.55f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
         if (g.messageTime > 0f && !g.confirmClear)
-            text(c, g.message, w / 2f, by - ts * 1.6f, ts * 0.85f, withAlpha(0xFFFFD27A.toInt(), min(1f, g.messageTime * 2f)))
+            text(c, g.message, w / 2f, by - ts * 0.5f, ts * 0.8f, withAlpha(gold, min(1f, g.messageTime * 2f)))
 
         if (g.confirmClear) {
             dim(c, 0.7f)
@@ -1074,9 +1010,108 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             val cbw = pw * 0.36f; val cby = rect.top + ph * 0.66f
             confirmNoRect.set(w / 2f - cbw - dp(10f), cby, w / 2f - dp(10f), cby + bh)
             confirmYesRect.set(w / 2f + dp(10f), cby, w / 2f + dp(10f) + cbw, cby + bh)
-            button(c, confirmNoRect, "CANCEL", HUD, ts * 0.85f)
-            button(c, confirmYesRect, "YES, CLEAR", DANGER, ts * 0.85f)
+            bigButton(c, confirmNoRect, "CANCEL", HUD, ts * 0.85f, 0.15f)
+            bigButton(c, confirmYesRect, "YES, CLEAR", DANGER, ts * 0.85f, 0.15f)
         } else { confirmNoRect.setEmpty(); confirmYesRect.setEmpty() }
+    }
+
+    /** Best run at #1, then the 19 most recent runs, laid out in two columns of ten. */
+    private fun drawScoreTable(c: Canvas, g: Game, top: Float, bottom: Float, ts: Float, pad: Float) {
+        val book = g.book
+        val gold = 0xFFFFD27A.toInt()
+        val colGap = dp(36f)
+        val cw = (w - pad * 2 - colGap) / 2f
+        val rowH = (bottom - top) / 11.3f
+        val fs = min(ts * 0.95f, rowH * 0.62f)
+        for (col in 0..1) {
+            val x0 = pad + col * (cw + colGap)
+            val xRank = x0 + fs * 1.6f
+            val xDate = x0 + fs * 2.4f
+            val xScore = x0 + cw * 0.64f
+            val xDist = x0 + cw * 0.84f
+            val xDrones = x0 + cw - dp(4f)
+            var y = top
+            val hc = 0x99FFFFFF.toInt()
+            text(c, "#", xRank, y, fs * 0.8f, hc, Paint.Align.RIGHT)
+            text(c, "DATE", xDate, y, fs * 0.8f, hc, Paint.Align.LEFT)
+            text(c, "SCORE", xScore, y, fs * 0.8f, hc, Paint.Align.RIGHT)
+            text(c, "DISTANCE", xDist, y, fs * 0.8f, hc, Paint.Align.RIGHT)
+            text(c, "DRONES", xDrones, y, fs * 0.8f, hc, Paint.Align.RIGHT)
+            line.color = 0x33FFFFFF; line.strokeWidth = dp(1f)
+            c.drawLine(x0, y + rowH * 0.3f, x0 + cw, y + rowH * 0.3f, line)
+            y += rowH * 1.25f
+            for (i in 0 until 10) {
+                val rank = col * 10 + i + 1
+                val rec: RunRecord?
+                val color: Int
+                if (rank == 1) {
+                    rec = book.best
+                    color = gold
+                    rect.set(x0 - dp(8f), y - rowH * 0.72f, x0 + cw + dp(4f), y + rowH * 0.3f)
+                    fill.color = 0x33FFD27A; c.drawRoundRect(rect, dp(8f), dp(8f), fill)
+                } else {
+                    rec = book.recent.getOrNull(rank - 2)
+                    color = if (rank == 2 && rec != null) 0xFFFFFFFF.toInt() else 0xCCDDE6F0.toInt()
+                }
+                text(c, "$rank", xRank, y, fs, if (rank == 1) gold else 0x77FFFFFF, Paint.Align.RIGHT)
+                if (rec != null) {
+                    val date = when {
+                        rec.time <= 0L -> "HIGH SCORE"
+                        rank == 1 -> "BEST  " + dateFmt.format(java.util.Date(rec.time))
+                        else -> dateFmt.format(java.util.Date(rec.time))
+                    }
+                    text(c, date, xDate, y, fs * 0.9f, color, Paint.Align.LEFT)
+                    text(c, "%,d".format(rec.score), xScore, y, fs, color, Paint.Align.RIGHT)
+                    if (rec.distance > 0) text(c, "%,d m".format(rec.distance), xDist, y, fs * 0.9f, color, Paint.Align.RIGHT)
+                    if (rec.time > 0L) text(c, "${rec.kills}", xDrones, y, fs * 0.9f, color, Paint.Align.RIGHT)
+                } else {
+                    text(c, if (rank == 1) "HIGH SCORE  -" else "-", xDate, y, fs * 0.9f, if (rank == 1) gold else 0x44FFFFFF, Paint.Align.LEFT)
+                }
+                y += rowH
+            }
+        }
+        val stats = "Runs: %,d     Distance: %,d m     Drones: %,d     Lasers shot down: %,d".format(
+            book.runs, book.totalDistance, book.totalKills, book.laserKills) +
+            (if (g.pro && book.zenBest > 0) "     Zen best: %,d m".format(book.zenBest) else "")
+        text(c, stats, w / 2f, bottom + ts * 0.6f, ts * 0.68f, 0x99FFFFFF.toInt())
+    }
+
+    /** All badges in a 6 x 4 grid. */
+    private fun drawBadgeGrid(c: Canvas, g: Game, top: Float, bottom: Float, ts: Float, pad: Float) {
+        val book = g.book
+        val cols = 6
+        val rows = (ScoreBook.BADGES.size + cols - 1) / cols
+        val cellW = (w - pad * 2) / cols
+        val cellH = (bottom - top + ts) / rows
+        val mr = min(cellW * 0.16f, cellH * 0.24f)
+        val nameSize = min(ts * 0.85f, cellW / 10.5f)
+        val descSize = nameSize * 0.8f
+        for ((i, b) in ScoreBook.BADGES.withIndex()) {
+            val cx = pad + cellW * (i % cols + 0.5f)
+            val cy = top - ts * 0.3f + cellH * (i / cols) + mr * 1.2f
+            val got = book.earned.contains(b.id)
+            medal(c, cx, cy, mr, b, got)
+            if (b.pro && !g.pro) {   // locked behind the Pro edition
+                rect.set(cx + mr * 0.25f, cy - mr * 1.25f, cx + mr * 1.6f, cy - mr * 0.5f)
+                fill.color = 0xFFFFD27A.toInt(); c.drawRoundRect(rect, dp(4f), dp(4f), fill)
+                text(c, "PRO", rect.centerX(), rect.bottom - mr * 0.17f, mr * 0.5f, 0xFF1A1A22.toInt())
+            }
+            val ny = cy + mr + nameSize * 1.35f
+            text(c, b.name, cx, ny, nameSize, if (got) b.color else 0x99FFFFFF.toInt())
+            // wrap description onto up to two lines
+            txt.textSize = descSize
+            var l1 = ""; var l2 = ""
+            for (wd in b.desc.split(" ")) {
+                if (l2.isEmpty() && txt.measureText("$l1 $wd".trim()) < cellW * 0.92f) l1 = "$l1 $wd".trim() else l2 = "$l2 $wd".trim()
+            }
+            val dc = if (got) 0xCCFFFFFF.toInt() else 0x77FFFFFF
+            text(c, l1, cx, ny + descSize * 1.3f, descSize, dc)
+            if (l2.isNotEmpty()) text(c, l2, cx, ny + descSize * 2.5f, descSize, dc)
+        }
+        if (!g.pro) {
+            val proCount = ScoreBook.BADGES.count { it.pro }
+            text(c, "$proCount badges marked PRO unlock with Trench Run Pro", w / 2f, bottom + ts * 0.6f, ts * 0.68f, 0x99FFD27A.toInt())
+        }
     }
 
     /** "Badge earned" banner that slides in at the top. */

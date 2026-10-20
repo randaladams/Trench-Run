@@ -113,6 +113,7 @@ class Game(private val prefs: SharedPreferences) {
     private var turretDodged = 0
     private var overheatedThisRun = false
     private var hitZero = false
+    private var crashes = 0
     private var laserKillsRun = 0
     private var tractorUsed = false
 
@@ -194,7 +195,7 @@ class Game(private val prefs: SharedPreferences) {
         heat = 0f; overheated = false
         lastCrashAt = 0f; tractorCatches = 0; slowCount = 0; turretDodged = 0
         overheatedThisRun = false; hitZero = false; confirmClear = false
-        laserKillsRun = 0; tractorUsed = false
+        laserKillsRun = 0; tractorUsed = false; crashes = 0
         if (zen) progress = 900f
         kills = 0; bonus = 0; score = 0
         invuln = 1.5f; hitFlash = 0f; shake = 0f
@@ -257,6 +258,10 @@ class Game(private val prefs: SharedPreferences) {
             if (!e.contains("zen") && distance >= 5000f) badge("zen")
             return
         }
+        if (!e.contains("ace") && score >= 5000) badge("ace")
+        if (!e.contains("marathon") && book.totalDistance + distance >= 50000f) badge("marathon")
+        if (!e.contains("slipstream") && slowTime <= 0f && speed >= MAX_SPEED - 0.5f) badge("slipstream")
+        if (!e.contains("ironhull") && crashes >= 6) badge("ironhull")
         if (!e.contains("deflector") && book.laserKills + laserKillsRun >= 5) badge("deflector")
         if (!e.contains("laserwall") && book.laserKills + laserKillsRun >= 50) badge("laserwall")
         if (!e.contains("purist") && !tractorUsed && distance >= 2000f) badge("purist")
@@ -275,7 +280,9 @@ class Game(private val prefs: SharedPreferences) {
         if (!e.contains("survivor") && hitZero && energy >= 50f) badge("survivor")
     }
 
-    fun showScores() { if (state == State.TITLE) { state = State.SCORES; confirmClear = false } }
+    /** 0 = scoreboard, 1 = badges */
+    var scoresTab = 0
+    fun showScores() { if (state == State.TITLE) { state = State.SCORES; scoresTab = 0; confirmClear = false } }
     fun backToTitle() { if (state == State.SCORES) { state = State.TITLE; confirmClear = false } }
     fun clearScores() { book.clearAll(); newHigh = false; confirmClear = false }
 
@@ -514,6 +521,7 @@ class Game(private val prefs: SharedPreferences) {
         }
         energy = max(0f, energy - damage)
         lastCrashAt = distance
+        crashes++
         invuln = 0.8f
         shieldFlash = 1f; hitFlash = 0.6f   // the shield bubble flashes as it absorbs the hit
         play(Sfx.SHIELD_HIT); play(Sfx.HIT)

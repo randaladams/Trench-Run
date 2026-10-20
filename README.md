@@ -37,7 +37,7 @@ New to the game? Tap **TUTORIAL** on the title screen for a guided training run 
 
 ## Scoreboard and badges
 
-Tap **SCORES & BADGES** on the title screen. Row 1 is always your all-time high score; rows 2-20 are your 19 most recent runs, newest first. There are 20 badges: 9 in the free edition and 11 more in Pro (marked with a PRO tag). A banner pops up when you earn one. **CLEAR ALL** erases scores and badges after a confirmation. The app version is shown at the bottom right.
+Tap **SCORES & BADGES** on the title screen. Two tabs at the top switch between the **Scoreboard** and **Badges** screens. On the scoreboard, #1 is always your all-time high score and #2-20 are your 19 most recent runs, newest first, in two columns of ten, with lifetime totals underneath. There are 24 badges: 10 in the free edition and 14 more in Pro (marked with a PRO tag). A banner pops up when you earn one. **CLEAR ALL** erases scores and badges after a confirmation. The app version is shown at the bottom right.
 
 ## Free and Pro editions
 
@@ -46,7 +46,7 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 | | Free | Pro |
 |---|---|---|
 | Main game, tutorial, scoreboard | Yes | Yes |
-| Badges | 9 | All 20 |
+| Badges | 10 | All 24 |
 | Zen mode (steady speed, no turrets, crashes don't hurt) | No | Yes |
 | Ads | Banner on menu screens, full-screen ad between some runs | None |
 
