@@ -87,6 +87,8 @@ class Sound(context: Context) {
                 ids[Game.Sfx.TURRET_CHARGE] = load("turret_charge", turretCharge())
                 ids[Game.Sfx.SLOW] = load("slow", slowMo())
                 ids[Game.Sfx.ALARM] = load("alarm", alarmBeep())
+                ids[Game.Sfx.OVERHEAT] = load("overheat", overheat())
+                ids[Game.Sfx.COOLED] = load("cooled", arpeggio(floatArrayOf(784f, 1175f), 0.07f, true))
                 engineId = load("engine", engineLoop())
                 shieldLoopId = load("shield_loop", shieldLoop())
             } catch (_: Exception) {
@@ -256,6 +258,20 @@ class Sound(context: Context) {
             val p = i / out.size.toFloat()
             ph += TWO_PI * (330f * exp(-p * 2.5f) + 40f) / RATE
             out[i] += (if (sin(ph) >= 0f) 0.25f else -0.25f) * (1f - p) * 0.8f
+        }
+        return out
+    }
+
+    /** Steam hiss over a sagging buzz: the guns have locked up. */
+    private fun overheat(): FloatArray {
+        val out = buf(0.9f)
+        noiseLp(out, 0.9f, 7000f, 2500f, 3f, 31, 0.7f)
+        var ph = 0f
+        for (i in out.indices) {
+            val p = i / out.size.toFloat()
+            ph += TWO_PI * (240f - 140f * p) / RATE
+            val sq = if (sin(ph) >= 0f) 1f else -1f
+            out[i] += sq * 0.35f * exp(-p * 3f)
         }
         return out
     }

@@ -48,12 +48,15 @@ class Game(private val prefs: SharedPreferences) {
         const val SLOW_DURATION = 12f    // seconds
         const val SLOW_ROLLBACK = 900f   // slow-mo also permanently rolls the speed ramp back this far
         const val LASER_DAMAGE = 30f     // enemy laser hit
+        const val HEAT_PER_SEC = 44f     // heat added per second of continuous fire (same at every laser level)
+        const val COOL_PER_SEC = 20f     // heat lost per second (always cooling)
+        const val OVERHEAT_RESUME = 35f  // after overheating, lasers unlock once heat falls below this
         const val CRITICAL_ENERGY = 25f  // one warning when energy drops below this
         const val BOLT_SPEED = 160f
     }
 
     enum class State { TITLE, PLAYING, GAME_OVER }
-    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, TRACTOR_ON, START, ENEMY_FIRE, TURRET_CHARGE, SLOW, ALARM, VOICE_CRITICAL, VOICE_DEPLETED }
+    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, TRACTOR_ON, START, ENEMY_FIRE, TURRET_CHARGE, SLOW, ALARM, VOICE_CRITICAL, VOICE_DEPLETED, OVERHEAT, COOLED }
 
     /** Sound events raised this frame (with stereo pan -1..1); GameView drains and plays them. */
     val sfx = ArrayList<Sfx>()
@@ -75,6 +78,8 @@ class Game(private val prefs: SharedPreferences) {
     var vx = 0f; var vy = 0f
     var energy = MAX_ENERGY
     var tractorOn = false
+    var heat = 0f              // laser heat 0..100
+    var overheated = false
     var weaponLevel = 1
     var invuln = 0f
     var hitFlash = 0f
@@ -154,6 +159,7 @@ class Game(private val prefs: SharedPreferences) {
         px = 0f; py = Y_MID; vx = 0f; vy = 0f
         distance = 0f; speed = BASE_SPEED
         energy = MAX_ENERGY; weaponLevel = 1; tractorOn = false
+        heat = 0f; overheated = false
         kills = 0; bonus = 0; score = 0
         invuln = 1.5f; hitFlash = 0f; shake = 0f
         fireCooldown = 0f
@@ -286,7 +292,13 @@ class Game(private val prefs: SharedPreferences) {
 
         // ---- weapons
         fireCooldown -= dt
-        if (firing && fireCooldown <= 0f) fire()
+        heat = max(0f, heat - COOL_PER_SEC * dt)
+        if (overheated && heat < OVERHEAT_RESUME) {
+            overheated = false
+            play(Sfx.COOLED)
+            showMessage("LASERS READY", 1.2f)
+        }
+        if (firing && !overheated && fireCooldown <= 0f) fire()
         moveBolts(dt, dz)
         updateTurrets(dt)
         if (state != State.PLAYING) return
@@ -452,6 +464,14 @@ class Game(private val prefs: SharedPreferences) {
         }
         fireCooldown = 1f / rate
         play(Sfx.LASER)
+        heat += HEAT_PER_SEC / rate
+        if (heat >= 100f) {
+            heat = 100f
+            overheated = true
+            play(Sfx.OVERHEAT)
+            showMessage("LASERS OVERHEATED!", 2f)
+            explode(px, py + 0.2f, 0.8f, 0xFFFFFFFF.toInt(), 14, 3f)   // vent steam
+        }
         for (ox in offsets) {
             // Bolts start at the wing tips and converge on the crosshair point.
             val sx = px + ox; val sy = py - 0.05f; val sz = 1f
@@ -657,7 +677,7 @@ class Game(private val prefs: SharedPreferences) {
     private val TUT_TEXT = arrayOf(
         "TILT your phone LEFT and RIGHT to steer.\nTouch both sides of the trench.",
         "TILT FORWARD and BACK to dive and climb.\nFly low, then fly high.",
-        "HOLD the LEFT side of the screen to fire lasers.\nShoot down the 3 red drones.",
+        "HOLD the LEFT side of the screen to fire lasers.\nShoot down the 3 red drones. Fire in bursts: if the HEAT gauge fills, your lasers lock until they cool.",
         "RED STRIPES are dangerous. Each crash costs half your shield.\nFly over, under or around these.",
         "CYAN ORBS restore shield energy.\nFly into this one.",
         "HOLD the RIGHT side of the screen for the TRACTOR BEAM.\nIt pulls nearby orbs to you but drains energy. Catch this orb with it.",

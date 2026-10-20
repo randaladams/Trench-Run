@@ -649,7 +649,11 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val z = Game.CROSSHAIR_Z
         val x = sx(g.px, z)
         val y = sy(g.py, z)
-        val col = if (g.targetLocked()) DANGER else HUD
+        val col = when {
+            g.overheated -> 0x88FFA040.toInt()
+            g.targetLocked() -> DANGER
+            else -> HUD
+        }
         val r = dp(16f)
         line.color = withAlpha(col, 0.85f)
         line.strokeWidth = dp(1.6f)
@@ -696,8 +700,24 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         c.drawRect(rect, line)
 
         text(c, "LASER MK ${g.weaponName()}", pad, by + barH + ts * 1.2f, ts * 0.8f, WEAPON, Paint.Align.LEFT)
+        // laser heat gauge
+        val hy = by + barH + ts * 1.55f
+        val hh = dp(7f)
+        val heatCol = heatColor(g)
+        rect.set(pad, hy, pad + barW, hy + hh)
+        fill.color = 0x40FFFFFF
+        c.drawRect(rect, fill)
+        rect.set(pad, hy, pad + barW * (g.heat / 100f), hy + hh)
+        fill.color = heatCol
+        c.drawRect(rect, fill)
+        line.color = 0x99FFFFFF.toInt(); line.strokeWidth = dp(1f)
+        rect.set(pad, hy, pad + barW, hy + hh)
+        c.drawRect(rect, line)
+        val heatLabel = if (g.overheated) "OVERHEATED" else "HEAT"
+        if (!g.overheated || (g.time * 4f).toInt() % 2 == 0)
+            text(c, heatLabel, pad + barW + dp(8f), hy + hh, ts * 0.7f, heatCol, Paint.Align.LEFT)
         if (g.slowTime > 0f) {
-            val sy0 = by + barH + ts * 1.7f
+            val sy0 = hy + hh + ts * 0.3f
             text(c, "SLOW-MO %.1fs".format(g.slowTime), pad, sy0 + ts * 0.7f, ts * 0.8f, SLOW, Paint.Align.LEFT)
             rect.set(pad, sy0 + ts * 0.95f, pad + barW * 0.6f * (g.slowTime / Game.SLOW_DURATION), sy0 + ts * 0.95f + dp(5f))
             fill.color = SLOW
@@ -739,7 +759,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         line.strokeWidth = dp(2f)
         line.color = withAlpha(0xFFFF6A5A.toInt(), if (g.firing) 0.9f else 0.35f)
         c.drawCircle(pad + zr, zy, zr, line)
-        text(c, "FIRE", pad + zr, zy + ts * 0.3f, ts * 0.75f, line.color)
+        text(c, if (g.overheated) "HOT" else "FIRE", pad + zr, zy + ts * 0.3f, ts * 0.75f, if (g.overheated) heatColor(g) else line.color)
+        if (g.heat > 0.5f) {   // heat ring fills clockwise around the fire button
+            line.color = heatColor(g)
+            line.strokeWidth = dp(5f)
+            rect.set(pad + zr - zr - dp(6f), zy - zr - dp(6f), pad + zr + zr + dp(6f), zy + zr + dp(6f))
+            c.drawArc(rect, -90f, 360f * g.heat / 100f, false, line)
+        }
         line.color = withAlpha(TRACTOR, if (g.tractorOn) 0.9f else 0.35f)
         c.drawCircle(w - pad - zr, zy, zr, line)
         text(c, "TRACTOR", w - pad - zr, zy + ts * 0.3f, ts * 0.62f, line.color)
@@ -749,6 +775,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             fill.color = withAlpha(DANGER, g.hitFlash * 0.35f)
             c.drawRect(0f, 0f, w, h, fill)
         }
+    }
+
+    /** Green when cool, yellow when warm, orange-red when hot, flashing red when locked. */
+    private fun heatColor(g: Game): Int = when {
+        g.overheated -> if ((g.time * 6f).toInt() % 2 == 0) DANGER else 0xFFFFA040.toInt()
+        g.heat < 50f -> mix(0xFF5CFF7A.toInt(), 0xFFFFE040.toInt(), g.heat / 50f)
+        else -> mix(0xFFFFE040.toInt(), 0xFFFF5030.toInt(), (g.heat - 50f) / 50f)
     }
 
     private fun dim(c: Canvas, a: Float) {
