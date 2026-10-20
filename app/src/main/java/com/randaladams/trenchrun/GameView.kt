@@ -155,7 +155,7 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
             }
 
             // banner ad: free edition, menu screens only (never during a run)
-            val wantBanner = !game.pro && game.state != Game.State.PLAYING
+            val wantBanner = !game.pro && game.state != Game.State.PLAYING && game.state != Game.State.SCORES
             if (wantBanner != bannerShown) {
                 bannerShown = wantBanner
                 post { host.setBannerVisible(wantBanner) }

@@ -849,7 +849,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     }
 
     /** Space kept clear at the bottom of menu screens for the banner ad (free edition). */
-    private fun bannerSpace(g: Game) = if (g.pro) 0f else dp(58f)
+    private fun bannerSpace(g: Game) = if (g.pro || g.state == Game.State.SCORES) 0f else dp(58f)
 
     /** Rounded button whose label shrinks to fit. */
     private fun bigButton(c: Canvas, rc: RectF, label: String, color: Int, maxSize: Float, filled: Float = 0.2f) {
@@ -903,16 +903,16 @@ class Renderer(private val density: Float, private val buildLabel: String) {
 
         // big START button
         y += ts * 0.9f
-        val sw = w * 0.3f; val sh = ts * 2.3f
+        val sw = w * 0.36f; val sh = ts * 2.6f
         startRect.set(w / 2f - sw / 2f, y, w / 2f + sw / 2f, y + sh)
         val pulse = 0.2f + 0.1f * sin(g.time * 3f)
         val zenOn = g.zenSelected
-        bigButton(c, startRect, if (zenOn) "START ZEN" else "START", if (zenOn) 0xFF9FE8D0.toInt() else gold, ts * 1.3f, pulse)
+        bigButton(c, startRect, if (zenOn) "START ZEN" else "START", if (zenOn) 0xFF9FE8D0.toInt() else gold, ts * 1.5f, pulse)
         y += sh + ts * 0.75f
         text(c, "Hold your phone the way you'll play, then press START", w / 2f, y, ts * 0.6f, 0xAAFFFFFF.toInt())
 
         // two rows of equal-size buttons
-        val bw = w * 0.23f; val bh = ts * 1.85f; val gap = dp(16f)
+        val bw = w * 0.28f; val bh = ts * 2.35f; val gap = dp(16f)
         val left = w / 2f - (bw * 3 + gap * 2) / 2f
         y += ts * 0.6f
         val zenLabel = if (!g.pro) "ZEN MODE (PRO)" else if (zenOn) "ZEN MODE: ON" else "ZEN MODE: OFF"
@@ -920,7 +920,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val row1 = arrayOf(tutorialRect to ("TUTORIAL" to gold), zenRect to (zenLabel to zenCol), scoresRect to ("SCORES & BADGES" to gold))
         for ((i, item) in row1.withIndex()) {
             item.first.set(left + i * (bw + gap), y, left + i * (bw + gap) + bw, y + bh)
-            bigButton(c, item.first, item.second.first, item.second.second, ts * 0.8f, if (item.first === zenRect && zenOn) 0.35f else 0.18f)
+            bigButton(c, item.first, item.second.first, item.second.second, ts * 1.0f, if (item.first === zenRect && zenOn) 0.35f else 0.18f)
         }
         y += bh + gap
         val pitchLabel = if (g.invertPitch) "PITCH: FWD = CLIMB" else "PITCH: FWD = DIVE"
@@ -928,7 +928,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val row2 = arrayOf(toggleRect to (pitchLabel to HUD), soundRect to (soundLabel to HUD), exitRect to ("EXIT GAME" to DANGER))
         for ((i, item) in row2.withIndex()) {
             item.first.set(left + i * (bw + gap), y, left + i * (bw + gap) + bw, y + bh)
-            bigButton(c, item.first, item.second.first, item.second.second, ts * 0.8f, 0.12f)
+            bigButton(c, item.first, item.second.first, item.second.second, ts * 1.0f, 0.12f)
         }
         y += bh
         if (g.messageTime > 0f) text(c, g.message, w / 2f, y + ts * 1.1f, ts * 0.75f, withAlpha(gold, min(1f, g.messageTime * 2f)))
@@ -1076,37 +1076,51 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         text(c, stats, w / 2f, bottom + ts * 0.6f, ts * 0.68f, 0x99FFFFFF.toInt())
     }
 
-    /** All badges in a 6 x 4 grid. */
+    /** All badges as cards in a 4-column grid: medal on the left, name and description on the right. */
     private fun drawBadgeGrid(c: Canvas, g: Game, top: Float, bottom: Float, ts: Float, pad: Float) {
         val book = g.book
-        val cols = 6
+        val cols = 4
         val rows = (ScoreBook.BADGES.size + cols - 1) / cols
-        val cellW = (w - pad * 2) / cols
-        val cellH = (bottom - top + ts) / rows
-        val mr = min(cellW * 0.16f, cellH * 0.24f)
-        val nameSize = min(ts * 0.85f, cellW / 10.5f)
-        val descSize = nameSize * 0.8f
+        val noteH = if (g.pro) 0f else ts * 1.1f
+        val gapX = dp(10f); val gapY = dp(6f)
+        val cellW = (w - pad * 2 - gapX * (cols - 1)) / cols
+        val cellH = (bottom - top + ts * 0.6f - noteH - gapY * (rows - 1)) / rows
+        val mr = min(cellH * 0.32f, cellW * 0.11f)
+        val textX = mr * 2.6f
+        val textW = cellW - textX - dp(8f)
+        val nameSize = min(ts * 0.85f, cellH * 0.26f)
+        val descSize = min(nameSize * 0.78f, cellH * 0.2f)
+        val y0 = top - ts * 0.6f
         for ((i, b) in ScoreBook.BADGES.withIndex()) {
-            val cx = pad + cellW * (i % cols + 0.5f)
-            val cy = top - ts * 0.3f + cellH * (i / cols) + mr * 1.2f
+            val col = i % cols; val row = i / cols
+            val x = pad + col * (cellW + gapX)
+            val y = y0 + row * (cellH + gapY)
             val got = book.earned.contains(b.id)
-            medal(c, cx, cy, mr, b, got)
+            rect.set(x, y, x + cellW, y + cellH)
+            fill.color = if (got) withAlpha(b.color, 0.1f) else 0x14FFFFFF
+            c.drawRoundRect(rect, dp(10f), dp(10f), fill)
+            if (got) { line.color = withAlpha(b.color, 0.5f); line.strokeWidth = dp(1.5f); c.drawRoundRect(rect, dp(10f), dp(10f), line) }
+            val mx = x + mr * 1.3f; val my = y + cellH / 2f
+            medal(c, mx, my, mr, b, got)
             if (b.pro && !g.pro) {   // locked behind the Pro edition
-                rect.set(cx + mr * 0.25f, cy - mr * 1.25f, cx + mr * 1.6f, cy - mr * 0.5f)
+                rect.set(mx - mr * 0.75f, my + mr * 0.55f, mx + mr * 0.75f, my + mr * 1.2f)
                 fill.color = 0xFFFFD27A.toInt(); c.drawRoundRect(rect, dp(4f), dp(4f), fill)
-                text(c, "PRO", rect.centerX(), rect.bottom - mr * 0.17f, mr * 0.5f, 0xFF1A1A22.toInt())
+                text(c, "PRO", rect.centerX(), rect.bottom - (rect.height() - mr * 0.45f) / 2f, mr * 0.45f, 0xFF1A1A22.toInt())
             }
-            val ny = cy + mr + nameSize * 1.35f
-            text(c, b.name, cx, ny, nameSize, if (got) b.color else 0x99FFFFFF.toInt())
-            // wrap description onto up to two lines
+            // text block: name, then the description wrapped onto up to two lines
             txt.textSize = descSize
             var l1 = ""; var l2 = ""
             for (wd in b.desc.split(" ")) {
-                if (l2.isEmpty() && txt.measureText("$l1 $wd".trim()) < cellW * 0.92f) l1 = "$l1 $wd".trim() else l2 = "$l2 $wd".trim()
+                if (l2.isEmpty() && txt.measureText("$l1 $wd".trim()) < textW) l1 = "$l1 $wd".trim() else l2 = "$l2 $wd".trim()
             }
-            val dc = if (got) 0xCCFFFFFF.toInt() else 0x77FFFFFF
-            text(c, l1, cx, ny + descSize * 1.3f, descSize, dc)
-            if (l2.isNotEmpty()) text(c, l2, cx, ny + descSize * 2.5f, descSize, dc)
+            val lines = if (l2.isEmpty()) 1 else 2
+            val blockH = nameSize + descSize * 1.25f * lines
+            var ty = y + (cellH - blockH) / 2f + nameSize * 0.85f
+            text(c, b.name, x + textX, ty, nameSize, if (got) b.color else 0xAAFFFFFF.toInt(), Paint.Align.LEFT)
+            val dc = if (got) 0xCCFFFFFF.toInt() else 0x80FFFFFF.toInt()
+            ty += descSize * 1.3f
+            text(c, l1, x + textX, ty, descSize, dc, Paint.Align.LEFT)
+            if (l2.isNotEmpty()) text(c, l2, x + textX, ty + descSize * 1.2f, descSize, dc, Paint.Align.LEFT)
         }
         if (!g.pro) {
             val proCount = ScoreBook.BADGES.count { it.pro }
