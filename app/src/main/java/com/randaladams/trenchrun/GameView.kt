@@ -209,9 +209,31 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
     /** Pointer ids that started on an on-screen button; they never count as fire/shield touches. */
     private val buttonPointers = HashSet<Int>()
 
+    // Hidden tester switch: press and hold the SCOREBOARD tab for 2 seconds to flip Free/Pro.
+    private val editionHold = Runnable {
+        synchronized(game) { if (game.state == Game.State.SCORES) game.toggleEdition() }
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+    }
+    private val editionHoldHint = Runnable {
+        synchronized(game) { if (game.state == Game.State.SCORES) game.showMessage("Keep holding to switch edition...", 1.4f) }
+    }
+
+    private fun cancelEditionHold() { removeCallbacks(editionHold); removeCallbacks(editionHoldHint) }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val action = e.actionMasked
+        if (BuildConfig.DEBUG) {
+            when (action) {
+                MotionEvent.ACTION_DOWN -> if (game.state == Game.State.SCORES && !game.confirmClear &&
+                    renderer.tabScoresRect.contains(e.x, e.y)) {
+                    postDelayed(editionHoldHint, 700)
+                    postDelayed(editionHold, 2000)
+                }
+                MotionEvent.ACTION_MOVE -> if (!renderer.tabScoresRect.contains(e.x, e.y)) cancelEditionHold()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> cancelEditionHold()
+            }
+        }
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             val i = e.actionIndex
             val x = e.getX(i); val y = e.getY(i)

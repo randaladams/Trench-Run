@@ -50,7 +50,7 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 | Zen mode (steady speed, no turrets, crashes don't hurt) | No | Yes |
 | Ads | Banner on menu screens, full-screen ad between some runs | None |
 
-**Test switch:** on the home screen, tap the **FREE EDITION** / **PRO EDITION** label under the title 5 times quickly to flip editions. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
+**Test switch:** open Scores & Badges and **press and hold the SCOREBOARD tab for 2 seconds** (you'll see "Keep holding..." and then feel a buzz). Tapping the **FREE EDITION** / **PRO EDITION** label on the home screen 5 times quickly also works. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
 
 ## Ads (AdMob)
 
