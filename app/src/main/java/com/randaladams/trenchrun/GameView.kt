@@ -91,6 +91,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     fun onBack(): Boolean {
         synchronized(game) {
             if (game.state == Game.State.PLAYING && !game.paused) { game.pause(); return true }
+            if (game.state == Game.State.SCORES) {
+                if (game.confirmClear) game.confirmClear = false else game.backToTitle()
+                return true
+            }
         }
         return false
     }
@@ -252,6 +256,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                         game.invertPitch = !game.invertPitch
                     } else if (renderer.soundRect.contains(x, y)) {
                         toggleSound()
+                    } else if (renderer.scoresRect.contains(x, y)) {
+                        game.showScores()
                     } else if (renderer.tutorialRect.contains(x, y)) {
                         calibrate()
                         game.start(asTutorial = true)
@@ -264,8 +270,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     game.paused -> { calibrate(); game.paused = false }
                     game.tutComplete -> game.endRun()
                 }
+                Game.State.SCORES -> when {
+                    game.confirmClear -> {
+                        if (renderer.confirmYesRect.contains(x, y)) game.clearScores()
+                        else if (renderer.confirmNoRect.contains(x, y)) { game.confirmClear = false }
+                    }
+                    renderer.backRect.contains(x, y) -> game.backToTitle()
+                    renderer.clearRect.contains(x, y) -> { game.confirmClear = true }
+                }
                 Game.State.GAME_OVER -> if (game.stateTime > 1.2f) { calibrate(); game.start() }
             }
+            Unit
         }
     }
 

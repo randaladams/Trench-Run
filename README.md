@@ -32,6 +32,10 @@ New to the game? Tap **TUTORIAL** on the title screen for a guided training run 
 - Speed and obstacle density increase the farther you go, and speed keeps creeping up slowly after that to a capped top speed. Current speed is shown top right.
 - Pause and sound on/off buttons sit at the bottom center of the screen. The pause screen has **Resume** and **End game**. The back button also pauses, and the phone volume buttons adjust sound.
 
+## Scoreboard and badges
+
+Tap **SCORES & BADGES** on the title screen. The scoreboard keeps your 19 most recent runs (newest first), and row 20 always shows your all-time high score. There are 16 badges to earn, such as Trench Rookie (1,000 m), Sharpshooter (25 drones in a run), Untouchable (1,500 m without a crash) and Collector (5 tractor-beam catches in a run). A banner pops up when you earn one. **CLEAR ALL** erases scores and badges after a confirmation. The app version is shown at the bottom right.
+
 Emulator testing: arrow keys steer, Space fires, Shift or Z holds the tractor beam, Enter launches.
 
 ## Project layout
@@ -45,6 +49,7 @@ Plain Kotlin + Android Canvas, no game engine or extra libraries.
 | `GameView.kt` | Game loop thread, tilt sensor reading, multi-touch zones. |
 | `Entities.kt` | Obstacle, laser bolt and particle data. |
 | `Textures.kt` | Procedurally painted wall and floor textures (plating, pipes, vents, lights). |
+| `ScoreBook.kt` | Saved scoreboard (last 19 runs + best) and badge definitions. |
 | `Sound.kt` | Synthesized sound effects and engine/shield hum loops. |
 
 Build locally with Android Studio, or `./gradlew assembleDebug`.

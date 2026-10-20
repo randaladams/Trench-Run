@@ -55,7 +55,7 @@ class Game(private val prefs: SharedPreferences) {
         const val BOLT_SPEED = 160f
     }
 
-    enum class State { TITLE, PLAYING, GAME_OVER }
+    enum class State { TITLE, PLAYING, GAME_OVER, SCORES }
     enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, TRACTOR_ON, START, ENEMY_FIRE, TURRET_CHARGE, SLOW, ALARM, VOICE_CRITICAL, VOICE_DEPLETED, OVERHEAT, COOLED }
 
     /** Sound events raised this frame (with stereo pan -1..1); GameView drains and plays them. */
@@ -92,8 +92,25 @@ class Game(private val prefs: SharedPreferences) {
     var score = 0
     var kills = 0
     var bonus = 0
-    var highScore = prefs.getInt("high", 0)
+    val book = ScoreBook(prefs)
+    val highScore get() = book.highScore
     var newHigh = false
+    var confirmClear = false
+
+    // badge pop-ups
+    private val badgeQueue = ArrayList<Badge>()
+    var toastBadge: Badge? = null
+        private set
+    var toastTime = 0f
+        private set
+
+    // per-run stats for badges
+    private var lastCrashAt = 0f
+    private var tractorCatches = 0
+    private var slowCount = 0
+    private var turretDodged = 0
+    private var overheatedThisRun = false
+    private var hitZero = false
     var time = 0f
     var stateTime = 0f
 
@@ -160,6 +177,8 @@ class Game(private val prefs: SharedPreferences) {
         distance = 0f; speed = BASE_SPEED
         energy = MAX_ENERGY; weaponLevel = 1; tractorOn = false
         heat = 0f; overheated = false
+        lastCrashAt = 0f; tractorCatches = 0; slowCount = 0; turretDodged = 0
+        overheatedThisRun = false; hitZero = false; confirmClear = false
         kills = 0; bonus = 0; score = 0
         invuln = 1.5f; hitFlash = 0f; shake = 0f
         fireCooldown = 0f
@@ -174,10 +193,7 @@ class Game(private val prefs: SharedPreferences) {
 
     /** Leave the current run (pause menu "End game"). Keeps the high score, returns to the title. */
     fun endRun() {
-        if (!tutorial && score > highScore) {
-            highScore = score
-            prefs.edit().putInt("high", score).apply()
-        }
+        if (!tutorial && distance > 30f) finishRun()
         entities.clear(); bolts.clear(); enemyBolts.clear()
         tractorOn = false; firing = false; tractorHeld = false
         tutorial = false
@@ -195,12 +211,46 @@ class Game(private val prefs: SharedPreferences) {
         shake = 1.6f
         hapticPending = true
         play(Sfx.GAME_OVER)
-        if (score > highScore) {
-            highScore = score
-            newHigh = true
-            prefs.edit().putInt("high", score).apply()
-        }
+        finishRun()
     }
+
+    /** Saves the run to the scoreboard and checks end-of-run badges. */
+    private fun finishRun() {
+        if (tutorial) return
+        newHigh = book.record(RunRecord(score, distance.toInt(), kills, System.currentTimeMillis()))
+        checkBadges()
+        badge("first")
+        if (book.runs >= 25) badge("dedicated")
+    }
+
+    private fun badge(id: String) {
+        val b = book.award(id) ?: return
+        badgeQueue.add(b)
+        play(Sfx.UPGRADE)
+    }
+
+    /** Badges that can be earned mid-run; cheap to call every frame. */
+    private fun checkBadges() {
+        if (tutorial) return
+        val e = book.earned
+        if (!e.contains("km1") && distance >= 1000f) badge("km1")
+        if (!e.contains("km3") && distance >= 3000f) badge("km3")
+        if (!e.contains("km6") && distance >= 6000f) badge("km6")
+        if (!e.contains("score10k") && score >= 10000) badge("score10k")
+        if (!e.contains("sharp") && kills >= 25) badge("sharp")
+        if (!e.contains("exterm") && book.totalKills + kills >= 250) badge("exterm")
+        if (!e.contains("untouch") && distance - lastCrashAt >= 1500f) badge("untouch")
+        if (!e.contains("collector") && tractorCatches >= 5) badge("collector")
+        if (!e.contains("armed") && weaponLevel >= 4) badge("armed")
+        if (!e.contains("cool") && kills >= 15 && !overheatedThisRun) badge("cool")
+        if (!e.contains("bender") && slowCount >= 3) badge("bender")
+        if (!e.contains("dodger") && turretDodged >= 5) badge("dodger")
+        if (!e.contains("survivor") && hitZero && energy >= 50f) badge("survivor")
+    }
+
+    fun showScores() { if (state == State.TITLE) { state = State.SCORES; confirmClear = false } }
+    fun backToTitle() { if (state == State.SCORES) { state = State.TITLE; confirmClear = false } }
+    fun clearScores() { book.clearAll(); newHigh = false; confirmClear = false }
 
     fun pause() { if (state == State.PLAYING) paused = true }
 
@@ -213,12 +263,15 @@ class Game(private val prefs: SharedPreferences) {
         if (paused) return
         stateTime += dt
         messageTime = max(0f, messageTime - dt)
+        toastTime = max(0f, toastTime - dt)
+        if (toastTime <= 0f && badgeQueue.isNotEmpty()) { toastBadge = badgeQueue.removeAt(0); toastTime = 3f }
+        else if (toastTime <= 0f) toastBadge = null
         hitFlash = max(0f, hitFlash - dt * 2.5f)
         shieldFlash = max(0f, shieldFlash - dt * 3f)
         shake = max(0f, shake - dt * 2.5f)
 
         when (state) {
-            State.TITLE -> updateTitle(dt)
+            State.TITLE, State.SCORES -> updateTitle(dt)
             State.PLAYING -> updatePlaying(dt)
             State.GAME_OVER -> updateGameOver(dt)
         }
@@ -324,6 +377,8 @@ class Game(private val prefs: SharedPreferences) {
         }
 
         score = if (tutorial) 0 else (distance * 0.5f).toInt() + kills * 100 + bonus
+        if (energy <= 0.5f) hitZero = true
+        checkBadges()
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
     }
 
@@ -360,6 +415,7 @@ class Game(private val prefs: SharedPreferences) {
                 onHit(LASER_DAMAGE)
                 if (state != State.PLAYING) return
             }
+            if (b.alive && !b.passed && b.z < -HZ - 1f) { b.passed = true; turretDodged++ }
             if (b.z < CAM_Z + 1f) b.alive = false
         }
         enemyBolts.removeAll { !it.alive }
@@ -395,6 +451,7 @@ class Game(private val prefs: SharedPreferences) {
             return
         }
         energy = max(0f, energy - damage)
+        lastCrashAt = distance
         invuln = 0.8f
         shieldFlash = 1f; hitFlash = 0.6f   // the shield bubble flashes as it absorbs the hit
         play(Sfx.SHIELD_HIT); play(Sfx.HIT)
@@ -420,10 +477,11 @@ class Game(private val prefs: SharedPreferences) {
 
     private fun collect(e: Entity) {
         e.alive = false
-        if (tractorOn && e.tractored) tutTractorCatch = true
+        if (tractorOn && e.tractored) { tutTractorCatch = true; tractorCatches++ }
         lastCollected = e.kind
         if (e.kind == Kind.PICKUP_SLOW) {
             slowTime = SLOW_DURATION
+            slowCount++
             progress = max(0f, progress - SLOW_ROLLBACK)
             bonus += 50
             showMessage("SLOW-MO ${SLOW_DURATION.toInt()}s  -  SPEED REDUCED", 2.2f)
@@ -468,6 +526,7 @@ class Game(private val prefs: SharedPreferences) {
         if (heat >= 100f) {
             heat = 100f
             overheated = true
+            overheatedThisRun = true
             play(Sfx.OVERHEAT)
             showMessage("LASERS OVERHEATED!", 2f)
             explode(px, py + 0.2f, 0.8f, 0xFFFFFFFF.toInt(), 14, 3f)   // vent steam
@@ -719,7 +778,10 @@ class Game(private val prefs: SharedPreferences) {
                 tutOrb(Kind.PICKUP_WEAPON, -2.5f, 4f, 110f)
                 tutOrb(Kind.PICKUP_SLOW, 2.5f, 6f, 150f)
             }
-            8 -> { tutComplete = true; play(Sfx.UPGRADE) }
+            8 -> {
+                tutComplete = true; play(Sfx.UPGRADE)
+                tutorial = false; badge("grad"); tutorial = true
+            }
         }
     }
 

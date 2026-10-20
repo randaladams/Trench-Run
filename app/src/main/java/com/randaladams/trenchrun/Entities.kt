@@ -49,6 +49,7 @@ class Bolt(
 ) {
     var alive = true
     var prevZ = z
+    var passed = false   // enemy bolt went by without hitting
 }
 
 class Particle(

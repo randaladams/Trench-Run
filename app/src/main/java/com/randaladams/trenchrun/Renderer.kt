@@ -65,6 +65,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val resumeRect = RectF()
     val endRect = RectF()
     val tutorialRect = RectF()
+    val scoresRect = RectF()
+    val backRect = RectF()
+    val clearRect = RectF()
+    val confirmYesRect = RectF()
+    val confirmNoRect = RectF()
+    private val dateFmt = java.text.SimpleDateFormat("MMM d  h:mm a", java.util.Locale.US)
+    private val versionLine = "Trench Run  version ${BuildConfig.VERSION_NAME}  (build ${BuildConfig.VERSION_CODE - 100})"
 
     private val wallTex = Textures.walls(4)
     private val floorTex = Textures.floors(2)
@@ -205,7 +212,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
                 if (g.paused) drawPaused(c, g)
             }
             Game.State.GAME_OVER -> { drawHud(c, g); drawGameOver(c, g) }
+            Game.State.SCORES -> drawScores(c, g)
         }
+        drawBadgeToast(c, g)
     }
 
     private fun drawStars(c: Canvas) {
@@ -869,13 +878,20 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val pitchLabel = if (g.invertPitch) "PITCH: FORWARD = CLIMB" else "PITCH: FORWARD = DIVE"
         val soundLabel = if (g.soundOn) "SOUND: ON" else "SOUND: OFF"
         val tutLabel = "TUTORIAL"
+        val scLabel = "SCORES & BADGES"
         val pw = txt.measureText(pitchLabel) + dp(28f)
         val sw = txt.measureText(soundLabel) + dp(28f)
         val tw = txt.measureText(tutLabel) + dp(36f)
-        val gap = dp(16f)
-        val left = w / 2f - (tw + pw + sw + gap * 2) / 2f
+        val cw = txt.measureText(scLabel) + dp(36f)
+        val gap = dp(14f)
+        val left = w / 2f - (tw + cw + pw + sw + gap * 3) / 2f
         tutorialRect.set(left, y - ts, left + tw, y + ts * 0.5f)
-        toggleRect.set(left + tw + gap, y - ts, left + tw + gap + pw, y + ts * 0.5f)
+        scoresRect.set(tutorialRect.right + gap, y - ts, tutorialRect.right + gap + cw, y + ts * 0.5f)
+        fill.color = 0x40FFD27A; c.drawRoundRect(scoresRect, dp(8f), dp(8f), fill)
+        line.color = 0xFFFFD27A.toInt(); line.strokeWidth = dp(2f)
+        c.drawRoundRect(scoresRect, dp(8f), dp(8f), line)
+        text(c, scLabel, scoresRect.centerX(), y, ts * 0.72f, 0xFFFFD27A.toInt())
+        toggleRect.set(scoresRect.right + gap, y - ts, scoresRect.right + gap + pw, y + ts * 0.5f)
         soundRect.set(toggleRect.right + gap, y - ts, toggleRect.right + gap + sw, y + ts * 0.5f)
         fill.color = 0x40FFD27A; c.drawRoundRect(tutorialRect, dp(8f), dp(8f), fill)
         line.color = 0xFFFFD27A.toInt(); line.strokeWidth = dp(2f)
@@ -892,6 +908,158 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         text(c, "Hold your phone the way you want to play, then tap to launch", w / 2f, h * 0.87f, ts * 0.8f, withAlpha(0xFFFFFFFF.toInt(), blink))
         if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w / 2f, h * 0.94f, ts * 0.7f, 0xBBFFD27A.toInt())
         text(c, buildLabel, w - dp(10f), h - dp(8f), ts * 0.55f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
+    }
+
+    private fun button(c: Canvas, rc: RectF, label: String, color: Int, ts: Float) {
+        fill.color = withAlpha(color, 0.18f)
+        c.drawRoundRect(rc, dp(10f), dp(10f), fill)
+        line.color = color; line.strokeWidth = dp(2f)
+        c.drawRoundRect(rc, dp(10f), dp(10f), line)
+        text(c, label, rc.centerX(), rc.centerY() + ts * 0.35f, ts, color)
+    }
+
+    /** Medal: earned badges glow in their color, locked ones are grey outlines. */
+    private fun medal(c: Canvas, x: Float, y: Float, r: Float, b: Badge, earned: Boolean) {
+        if (earned) {
+            fill.color = withAlpha(b.color, 0.25f); c.drawCircle(x, y, r * 1.35f, fill)
+            fill.color = b.color; c.drawCircle(x, y, r, fill)
+            fill.color = withAlpha(0xFFFFFFFF.toInt(), 0.45f); c.drawCircle(x - r * 0.3f, y - r * 0.3f, r * 0.3f, fill)
+            line.color = 0xFF1A1A22.toInt(); line.strokeWidth = max(dp(1.5f), r * 0.12f)
+            // star
+            path.reset()
+            for (i in 0 until 10) {
+                val a = -Math.PI.toFloat() / 2f + i * Math.PI.toFloat() / 5f
+                val rr = if (i % 2 == 0) r * 0.6f else r * 0.26f
+                val px = x + cos(a) * rr; val py = y + sin(a) * rr
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            path.close()
+            fill.color = 0xFF1A1A22.toInt(); c.drawPath(path, fill)
+        } else {
+            line.color = 0x55FFFFFF; line.strokeWidth = dp(1.5f)
+            c.drawCircle(x, y, r, line)
+            text(c, "?", x, y + r * 0.35f, r, 0x55FFFFFF)
+        }
+    }
+
+    private fun drawScores(c: Canvas, g: Game) {
+        dim(c, 0.8f)
+        val book = g.book
+        val ts = max(dp(10f), h / 34f)
+        val pad = dp(20f)
+        text(c, "SCOREBOARD", w * 0.25f, pad + ts * 1.4f, ts * 1.6f, 0xFFFFD27A.toInt())
+        text(c, "BADGES  %d / %d".format(book.earned.size, ScoreBook.BADGES.size), w * 0.72f, pad + ts * 1.4f, ts * 1.6f, 0xFFFFD27A.toInt())
+
+        // ---- left: 19 most recent runs + the all-time best as #20
+        val lx = pad; val rx = w * 0.48f
+        val colScore = lx + (rx - lx) * 0.36f
+        val colDist = lx + (rx - lx) * 0.58f
+        val colKills = lx + (rx - lx) * 0.74f
+        var y = pad + ts * 3.2f
+        val rowH = (h - y - ts * 5.2f) / 21f
+        val small = min(ts * 0.85f, rowH * 0.78f)
+        text(c, "#", lx, y, small, 0x99FFFFFF.toInt(), Paint.Align.LEFT)
+        text(c, "WHEN", lx + small * 2f, y, small, 0x99FFFFFF.toInt(), Paint.Align.LEFT)
+        text(c, "SCORE", colScore, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
+        text(c, "DIST", colDist, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
+        text(c, "DRONES", colKills, y, small, 0x99FFFFFF.toInt(), Paint.Align.RIGHT)
+        y += rowH
+        for (i in 0 until ScoreBook.RECENT) {
+            val r = book.recent.getOrNull(i)
+            val col = if (r != null && i == 0) 0xFFFFFFFF.toInt() else 0xCCDDE6F0.toInt()
+            text(c, "%2d".format(i + 1), lx, y, small, 0x77FFFFFF, Paint.Align.LEFT)
+            if (r != null) {
+                text(c, dateFmt.format(java.util.Date(r.time)), lx + small * 2f, y, small, col, Paint.Align.LEFT)
+                text(c, "%,d".format(r.score), colScore, y, small, col, Paint.Align.RIGHT)
+                text(c, "%,d m".format(r.distance), colDist, y, small, col, Paint.Align.RIGHT)
+                text(c, "${r.kills}", colKills, y, small, col, Paint.Align.RIGHT)
+                if (book.best != null && r == book.best) text(c, "BEST", colKills + small, y, small * 0.8f, 0xFFFFD27A.toInt(), Paint.Align.LEFT)
+            } else {
+                text(c, "-", lx + small * 2f, y, small, 0x44FFFFFF, Paint.Align.LEFT)
+            }
+            y += rowH
+        }
+        // #20: high score, always
+        rect.set(lx - dp(6f), y - rowH * 0.8f, rx, y + rowH * 0.35f)
+        fill.color = 0x30FFD27A; c.drawRoundRect(rect, dp(6f), dp(6f), fill)
+        val best = book.best
+        val gold = 0xFFFFD27A.toInt()
+        text(c, "20", lx, y, small, gold, Paint.Align.LEFT)
+        if (best != null) {
+            text(c, if (best.time > 0) "HIGH  " + dateFmt.format(java.util.Date(best.time)) else "HIGH SCORE", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
+            text(c, "%,d".format(best.score), colScore, y, small, gold, Paint.Align.RIGHT)
+            if (best.distance > 0) text(c, "%,d m".format(best.distance), colDist, y, small, gold, Paint.Align.RIGHT)
+            if (best.time > 0) text(c, "${best.kills}", colKills, y, small, gold, Paint.Align.RIGHT)
+        } else text(c, "HIGH SCORE  -", lx + small * 2f, y, small, gold, Paint.Align.LEFT)
+
+        // ---- right: badge grid 4 x 4
+        val gx0 = w * 0.51f; val gx1 = w - pad
+        val gy0 = pad + ts * 2.8f; val gy1 = h - ts * 5f
+        val cols = 4; val rows = (ScoreBook.BADGES.size + cols - 1) / cols
+        val cellW = (gx1 - gx0) / cols; val cellH = (gy1 - gy0) / rows
+        val mr = min(cellW, cellH) * 0.2f
+        val nameSize = min(ts * 0.8f, cellW / 11f)
+        val descSize = nameSize * 0.78f
+        for ((i, b) in ScoreBook.BADGES.withIndex()) {
+            val cx = gx0 + cellW * (i % cols + 0.5f)
+            val cy = gy0 + cellH * (i / cols) + mr * 1.5f
+            val got = book.earned.contains(b.id)
+            medal(c, cx, cy, mr, b, got)
+            text(c, b.name, cx, cy + mr + nameSize * 1.3f, nameSize, if (got) b.color else 0x88FFFFFF.toInt())
+            // wrap description onto up to two lines
+            txt.textSize = descSize
+            val words = b.desc.split(" ")
+            var l1 = ""; var l2 = ""
+            for (wd in words) {
+                if (l2.isEmpty() && txt.measureText("$l1 $wd".trim()) < cellW * 0.92f) l1 = "$l1 $wd".trim() else l2 = "$l2 $wd".trim()
+            }
+            val dc = if (got) 0xCCFFFFFF.toInt() else 0x66FFFFFF
+            text(c, l1, cx, cy + mr + nameSize * 1.3f + descSize * 1.25f, descSize, dc)
+            if (l2.isNotEmpty()) text(c, l2, cx, cy + mr + nameSize * 1.3f + descSize * 2.45f, descSize, dc)
+        }
+
+        // ---- bottom: stats, buttons, version
+        val by = h - ts * 3.6f
+        text(c, "Runs played: %,d    Drones destroyed: %,d".format(book.runs, book.totalKills), w * 0.25f, by - ts * 0.4f, ts * 0.75f, 0x99FFFFFF.toInt())
+        val bw = max(dp(120f), w * 0.13f); val bh = ts * 1.9f
+        backRect.set(w / 2f - bw - dp(10f), by, w / 2f - dp(10f), by + bh)
+        clearRect.set(w / 2f + dp(10f), by, w / 2f + dp(10f) + bw, by + bh)
+        button(c, backRect, "BACK", HUD, ts * 0.85f)
+        button(c, clearRect, "CLEAR ALL", DANGER, ts * 0.85f)
+        text(c, versionLine, w - pad, h - dp(8f), ts * 0.6f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
+
+        if (g.confirmClear) {
+            dim(c, 0.7f)
+            val pw = w * 0.5f; val ph = h * 0.42f
+            rect.set(w / 2f - pw / 2f, h / 2f - ph / 2f, w / 2f + pw / 2f, h / 2f + ph / 2f)
+            fill.color = 0xF0141822.toInt(); c.drawRoundRect(rect, dp(14f), dp(14f), fill)
+            line.color = DANGER; line.strokeWidth = dp(2f); c.drawRoundRect(rect, dp(14f), dp(14f), line)
+            text(c, "Clear all scores and badges?", w / 2f, rect.top + ph * 0.25f, ts * 1.1f, 0xFFFFFFFF.toInt())
+            text(c, "This erases your scoreboard, high score and every badge.", w / 2f, rect.top + ph * 0.42f, ts * 0.75f, 0xCCFFFFFF.toInt())
+            text(c, "It can't be undone.", w / 2f, rect.top + ph * 0.54f, ts * 0.75f, 0xCCFFFFFF.toInt())
+            val cbw = pw * 0.36f; val cby = rect.top + ph * 0.66f
+            confirmNoRect.set(w / 2f - cbw - dp(10f), cby, w / 2f - dp(10f), cby + bh)
+            confirmYesRect.set(w / 2f + dp(10f), cby, w / 2f + dp(10f) + cbw, cby + bh)
+            button(c, confirmNoRect, "CANCEL", HUD, ts * 0.85f)
+            button(c, confirmYesRect, "YES, CLEAR", DANGER, ts * 0.85f)
+        } else { confirmNoRect.setEmpty(); confirmYesRect.setEmpty() }
+    }
+
+    /** "Badge earned" banner that slides in at the top. */
+    private fun drawBadgeToast(c: Canvas, g: Game) {
+        val b = g.toastBadge ?: return
+        val ts = max(dp(11f), h / 30f)
+        val t = g.toastTime
+        val slide = min(1f, min((3f - t) * 5f, t * 4f))
+        val bw = w * 0.42f; val bh = ts * 2.8f
+        val top = -bh + (bh + dp(10f) + h * 0.06f) * slide
+        rect.set(w / 2f - bw / 2f, top, w / 2f + bw / 2f, top + bh)
+        fill.color = 0xE6141822.toInt(); c.drawRoundRect(rect, dp(12f), dp(12f), fill)
+        line.color = b.color; line.strokeWidth = dp(2f); c.drawRoundRect(rect, dp(12f), dp(12f), line)
+        val mr = bh * 0.32f
+        medal(c, rect.left + bh * 0.55f, rect.centerY(), mr, b, true)
+        text(c, "BADGE EARNED: ${b.name.uppercase()}", rect.left + bh * 1.05f, rect.top + bh * 0.42f, ts * 0.85f, b.color, Paint.Align.LEFT)
+        text(c, b.desc, rect.left + bh * 1.05f, rect.top + bh * 0.78f, ts * 0.7f, 0xCCFFFFFF.toInt(), Paint.Align.LEFT)
     }
 
     private fun drawPaused(c: Canvas, g: Game) {
