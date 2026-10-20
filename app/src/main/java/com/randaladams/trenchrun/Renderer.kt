@@ -983,20 +983,24 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         bigButton(c, tabBadgesRect, "BADGES  %d / %d".format(book.earned.size, badgeTotal), gold, ts * 0.95f, if (g.scoresTab == 1) 0.45f else 0.08f)
 
         val top = pad + th + ts * 1.4f
-        val by = h - bannerSpace(g) - ts * 2.6f     // bottom buttons
-        val bottom = by - ts * 1.6f
+        // Bottom row: BACK in the left corner, CLEAR ALL in the right corner, banner ad (320 x 50 dp) centered
+        // between them with a clear gap on each side so taps on the buttons don't land on the ad.
+        val bh = dp(50f)
+        val by = h - dp(6f) - bh
+        val adHalf = dp(160f); val adGap = dp(36f)
+        val bw = min(w * 0.2f, w / 2f - adHalf - adGap - pad)
+        val bottom = by - ts * 1.3f
         if (g.scoresTab == 0) drawScoreTable(c, g, top, bottom, ts, pad)
         else drawBadgeGrid(c, g, top, bottom, ts, pad)
 
-        // ---- bottom: buttons, version
-        val bw = max(dp(120f), w * 0.15f); val bh = ts * 1.8f
-        backRect.set(w / 2f - bw - dp(10f), by, w / 2f - dp(10f), by + bh)
-        clearRect.set(w / 2f + dp(10f), by, w / 2f + dp(10f) + bw, by + bh)
-        bigButton(c, backRect, "BACK", HUD, ts * 0.85f, 0.15f)
-        bigButton(c, clearRect, "CLEAR ALL", DANGER, ts * 0.85f, 0.12f)
-        text(c, versionLine(g), w - dp(14f), h - dp(8f), ts * 0.55f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
+        // ---- bottom corners: buttons; version line in the top-right corner
+        backRect.set(pad, by, pad + bw, by + bh)
+        clearRect.set(w - pad - bw, by, w - pad, by + bh)
+        bigButton(c, backRect, "BACK", HUD, ts * 0.9f, 0.15f)
+        bigButton(c, clearRect, "CLEAR ALL", DANGER, ts * 0.9f, 0.12f)
+        text(c, versionLine(g), w - dp(14f), pad + ts * 0.5f, ts * 0.5f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
         if (g.messageTime > 0f && !g.confirmClear)
-            text(c, g.message, w / 2f, by - ts * 0.5f, ts * 0.8f, withAlpha(gold, min(1f, g.messageTime * 2f)))
+            text(c, g.message, w / 2f, pad + th + ts * 0.9f, ts * 0.75f, withAlpha(gold, min(1f, g.messageTime * 2f)))
 
         if (g.confirmClear) {
             dim(c, 0.7f)

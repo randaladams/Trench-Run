@@ -37,7 +37,7 @@ New to the game? Tap **TUTORIAL** on the title screen for a guided training run 
 
 ## Scoreboard and badges
 
-Tap **SCORES & BADGES** on the title screen. Two tabs at the top switch between the **Scoreboard** and **Badges** screens. On the scoreboard, #1 is always your all-time high score and #2-20 are your 19 most recent runs, newest first, in two columns of ten, with lifetime totals underneath. There are 24 badges: 10 in the free edition and 14 more in Pro (marked with a PRO tag). A banner pops up when you earn one. **CLEAR ALL** erases scores and badges after a confirmation. The app version is shown at the bottom right.
+Tap **SCORES & BADGES** on the title screen. Two tabs at the top switch between the **Scoreboard** and **Badges** screens. On the scoreboard, #1 is always your all-time high score and #2-20 are your 19 most recent runs, newest first, in two columns of ten, with lifetime totals underneath. There are 24 badges: 10 in the free edition and 14 more in Pro (marked with a PRO tag). A banner pops up when you earn one. **CLEAR ALL** erases scores and badges after a confirmation. The app version is shown in the top-right corner.
 
 ## Free and Pro editions
 
@@ -55,7 +55,7 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 ## Ads (AdMob)
 
 Free edition only:
-- A banner at the bottom of the home screen and game-over screen. Never during a run, and not on the Scores & Badges screens.
+- A banner at the bottom of the home, Scores & Badges and game-over screens (on Scores & Badges it sits between the BACK and CLEAR ALL buttons). Never during a run.
 - A full-screen ad before a new run, at most every 3 runs and at least 2 minutes apart, and never in a player's first 3 runs. Tuning is at the top of `Ads.kt`.
 - A privacy consent prompt appears where the law requires it (Google's UMP SDK).
 
