@@ -3,24 +3,31 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// ---- AdMob ids
+// Your real ids from admob.google.com (Apps > Trench Run > App settings / Ad units).
+// Leave empty until created; they are only used by the Play Store (release) build.
+val REAL_APP_ID = ""            // looks like ca-app-pub-1234567890123456~1234567890
+val REAL_BANNER_ID = ""         // looks like ca-app-pub-1234567890123456/1234567890
+val REAL_INTERSTITIAL_ID = ""   // looks like ca-app-pub-1234567890123456/1234567890
+
+// Google's public test ids (always safe to show and tap).
+val TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+val TEST_BANNER_ID = "ca-app-pub-3940256099942544/6300978111"
+val TEST_INTERSTITIAL_ID = "ca-app-pub-3940256099942544/1033173712"
+
 android {
     namespace = "com.randaladams.trenchrun"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.randaladams.trenchrun"
+        // Play Store package name (permanent once published)
+        applicationId = "com.adamselite.trenchrun"
         minSdk = 26
         targetSdk = 35
         // CI passes its run number so each build shows on the title screen and installs as an update
         val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
         versionCode = 100 + buildNumber
         versionName = "0.2.$buildNumber"
-
-        // ---- AdMob. These are Google's public TEST ids, safe to click during development.
-        // Before publishing, replace them with the ids from your own AdMob account.
-        manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
-        buildConfigField("String", "AD_BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
-        buildConfigField("String", "AD_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
     }
 
     // A fixed debug key is committed so every CI build installs over the previous one
@@ -35,11 +42,20 @@ android {
     }
 
     buildTypes {
+        // Test builds (the download link) ALWAYS use Google's test ads, so tapping them on your own
+        // phone can never get your AdMob account flagged for invalid clicks.
         debug {
             signingConfig = signingConfigs.getByName("debug")
+            manifestPlaceholders["admobAppId"] = TEST_APP_ID
+            buildConfigField("String", "AD_BANNER_ID", "\"$TEST_BANNER_ID\"")
+            buildConfigField("String", "AD_INTERSTITIAL_ID", "\"$TEST_INTERSTITIAL_ID\"")
         }
+        // The Play Store build uses your real AdMob ids (falls back to test ids until they're filled in).
         release {
             isMinifyEnabled = false
+            manifestPlaceholders["admobAppId"] = REAL_APP_ID.ifEmpty { TEST_APP_ID }
+            buildConfigField("String", "AD_BANNER_ID", "\"${REAL_BANNER_ID.ifEmpty { TEST_BANNER_ID }}\"")
+            buildConfigField("String", "AD_INTERSTITIAL_ID", "\"${REAL_INTERSTITIAL_ID.ifEmpty { TEST_INTERSTITIAL_ID }}\"")
         }
     }
 

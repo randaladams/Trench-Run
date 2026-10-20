@@ -59,7 +59,9 @@ Free edition only:
 - A full-screen ad before a new run, at most every 3 runs and at least 2 minutes apart, and never in a player's first 3 runs. Tuning is at the top of `Ads.kt`.
 - A privacy consent prompt appears where the law requires it (Google's UMP SDK).
 
-The ad ids in `app/build.gradle.kts` are Google's public **test** ids, so test ads show and tapping them is safe. Before publishing: create an AdMob account and app, put your real app id and ad unit ids in `app/build.gradle.kts`, add an `app-ads.txt` file to your developer website, and fill in the ads and Data safety sections in the Play Console.
+Test builds (the download link) always use Google's public **test** ads, so tapping them is safe. The Play Store (release) build uses the real ids set at the top of `app/build.gradle.kts` (`REAL_APP_ID`, `REAL_BANNER_ID`, `REAL_INTERSTITIAL_ID`) and falls back to test ids while those are empty. Before publishing, also add an `app-ads.txt` file to the developer website listed on the Play Store, and fill in the ads and Data safety sections in the Play Console.
+
+Package name: `com.adamselite.trenchrun`.
 
 Emulator testing: arrow keys steer, Space fires, Shift or Z holds the tractor beam, Enter launches.
 
