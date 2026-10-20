@@ -28,28 +28,32 @@ class Game(private val prefs: SharedPreferences) {
 
         // ---- tuning knobs ----
         const val MAX_ENERGY = 100f
-        const val HIT_DAMAGE = 40f       // hit with shield down
-        const val SHIELDED_DAMAGE = 15f  // hit with shield raised
+        const val HIT_DAMAGE = 50f       // hit with shield down (2 hits empty a full shield)
+        const val SHIELDED_DAMAGE = 20f  // hit with shield raised
         const val SHIELD_DRAIN = 14f     // energy per second while shield is raised
-        const val REGEN_BASE = 0.5f      // energy per second rebuilt while flying
-        const val REGEN_MAX = 1.5f       // regen slowly grows with distance up to this
-        const val KILL_ENERGY = 4f       // energy gained for each drone destroyed
+        const val REGEN = 0.3f           // energy per second rebuilt while flying (flat, not tied to speed)
+        const val KILL_ENERGY = 2f       // energy gained for each drone destroyed
         const val PICKUP_ENERGY = 25f
+        // Pickups are on timers (seconds), so flying faster does NOT hand out more energy.
+        const val SHIELD_ORB_EVERY = 18f   // +/- 4s
+        const val WEAPON_ORB_EVERY = 30f   // +/- 5s
+        const val SLOW_ORB_EVERY = 22f     // +/- 5s, starts once things speed up
         const val BASE_SPEED = 30f
-        const val SPEED_GAIN = 36f       // added speed by the time difficulty maxes out
-        const val DIFFICULTY_DISTANCE = 4500f
-        const val LATE_SPEED_PER_1000 = 3f  // speed keeps creeping up after that...
-        const val MAX_SPEED = 92f           // ...up to this cap
-        const val SLOW_FACTOR = 0.6f     // slow-mo pickup: speed multiplier
-        const val SLOW_DURATION = 10f    // seconds
-        const val LASER_DAMAGE = 25f     // enemy laser, shield down
-        const val LASER_SHIELDED = 8f    // enemy laser, shield up
-        const val CRITICAL_ENERGY = 20f  // alarm sounds below this
+        const val SPEED_GAIN = 20f       // added speed by the time difficulty maxes out
+        const val DIFFICULTY_DISTANCE = 5000f
+        const val LATE_SPEED_PER_1000 = 1f  // speed keeps creeping up after that...
+        const val MAX_SPEED = 58f           // ...up to this cap
+        const val SLOW_FACTOR = 0.45f    // slow-mo pickup: speed multiplier while active
+        const val SLOW_DURATION = 12f    // seconds
+        const val SLOW_ROLLBACK = 900f   // slow-mo also permanently rolls the speed ramp back this far
+        const val LASER_DAMAGE = 30f     // enemy laser, shield down
+        const val LASER_SHIELDED = 10f   // enemy laser, shield up
+        const val CRITICAL_ENERGY = 25f  // one warning when energy drops below this
         const val BOLT_SPEED = 160f
     }
 
     enum class State { TITLE, PLAYING, GAME_OVER }
-    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, SHIELD_UP, START, ENEMY_FIRE, TURRET_CHARGE, SLOW }
+    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, SHIELD_UP, START, ENEMY_FIRE, TURRET_CHARGE, SLOW, ALARM, VOICE_CRITICAL, VOICE_DEPLETED }
 
     /** Sound events raised this frame (with stereo pan -1..1); GameView drains and plays them. */
     val sfx = ArrayList<Sfx>()
@@ -102,6 +106,13 @@ class Game(private val prefs: SharedPreferences) {
     val enemyBolts = ArrayList<Bolt>()
     var slowTime = 0f
     var slowMul = 1f
+    /** Drives speed and obstacle density. Grows with distance; slow-mo pickups knock it back. */
+    var progress = 0f
+    private var criticalWarned = false
+    private var depletedWarned = false
+    private var shieldOrbTimer = 0f
+    private var weaponOrbTimer = 0f
+    private var slowOrbTimer = 0f
     val critical get() = state == State.PLAYING && energy < CRITICAL_ENERGY
     val particles = ArrayList<Particle>()
 
@@ -110,7 +121,7 @@ class Game(private val prefs: SharedPreferences) {
     private val rng = Random(System.nanoTime())
     private var hapticPending = false
 
-    val difficulty get() = min(1f, distance / DIFFICULTY_DISTANCE)
+    val difficulty get() = min(1f, progress / DIFFICULTY_DISTANCE)
 
     fun consumeHaptic(): Boolean { val h = hapticPending; hapticPending = false; return h }
 
@@ -118,7 +129,9 @@ class Game(private val prefs: SharedPreferences) {
 
     fun start() {
         entities.clear(); bolts.clear(); enemyBolts.clear(); particles.clear()
-        slowTime = 0f; slowMul = 1f
+        slowTime = 0f; slowMul = 1f; progress = 0f
+        criticalWarned = false; depletedWarned = false
+        shieldOrbTimer = SHIELD_ORB_EVERY; weaponOrbTimer = WEAPON_ORB_EVERY * 0.6f; slowOrbTimer = SLOW_ORB_EVERY
         px = 0f; py = Y_MID; vx = 0f; vy = 0f
         distance = 0f; speed = BASE_SPEED
         energy = MAX_ENERGY; weaponLevel = 1; shieldUp = false
@@ -202,7 +215,7 @@ class Game(private val prefs: SharedPreferences) {
         px = nx; py = ny
 
         // ---- forward motion
-        val late = max(0f, distance - DIFFICULTY_DISTANCE) / 1000f * LATE_SPEED_PER_1000
+        val late = max(0f, progress - DIFFICULTY_DISTANCE) / 1000f * LATE_SPEED_PER_1000
         val baseSpeed = min(MAX_SPEED, BASE_SPEED + SPEED_GAIN * difficulty + late)
         slowTime = max(0f, slowTime - dt)
         val slowTarget = if (slowTime > 0f) SLOW_FACTOR else 1f
@@ -210,6 +223,8 @@ class Game(private val prefs: SharedPreferences) {
         speed = baseSpeed * slowMul
         val dz = speed * dt
         distance += dz
+        progress += dz
+        shieldOrbTimer -= dt; weaponOrbTimer -= dt; slowOrbTimer -= dt
         moveWorld(dz, dt)
         spawn()
 
@@ -220,9 +235,18 @@ class Game(private val prefs: SharedPreferences) {
         if (shieldUp) {
             energy = max(0f, energy - SHIELD_DRAIN * dt)
         } else {
-            val regen = min(REGEN_MAX, REGEN_BASE + distance / 20000f)
-            energy = min(MAX_ENERGY, energy + regen * dt)
+            energy = min(MAX_ENERGY, energy + REGEN * dt)
         }
+        // one-time warnings (re-armed once energy recovers)
+        if (!criticalWarned && energy < CRITICAL_ENERGY && energy > 0.5f) {
+            criticalWarned = true
+            play(Sfx.ALARM); play(Sfx.VOICE_CRITICAL)
+        } else if (criticalWarned && energy > CRITICAL_ENERGY + 10f) criticalWarned = false
+        if (!depletedWarned && energy <= 0.5f) {
+            depletedWarned = true
+            criticalWarned = true
+            play(Sfx.ALARM); play(Sfx.VOICE_DEPLETED)
+        } else if (depletedWarned && energy > 5f) depletedWarned = false
         invuln = max(0f, invuln - dt)
 
         // ---- weapons
@@ -330,8 +354,9 @@ class Game(private val prefs: SharedPreferences) {
         e.alive = false
         if (e.kind == Kind.PICKUP_SLOW) {
             slowTime = SLOW_DURATION
+            progress = max(0f, progress - SLOW_ROLLBACK)
             bonus += 50
-            showMessage("SLOW-MO ${SLOW_DURATION.toInt()}s", 2f)
+            showMessage("SLOW-MO ${SLOW_DURATION.toInt()}s  -  SPEED REDUCED", 2.2f)
             play(Sfx.SLOW)
             explode(e.cx, e.cy, e.z0, 0xFFC08CFF.toInt(), 18, 5f)
         } else if (e.kind == Kind.PICKUP_SHIELD) {
@@ -450,7 +475,7 @@ class Game(private val prefs: SharedPreferences) {
             val z = nextSpawnAt - distance
             val depth = spawnPattern(z)
             // gap scales with speed so reaction time stays fair, shrinking as difficulty rises
-            val reaction = 0.8f - 0.4f * difficulty + rng.nextFloat() * 0.25f
+            val reaction = 0.9f - 0.25f * difficulty + rng.nextFloat() * 0.3f
             val gap = max(18f, speed * reaction)
             maybeSpawnPickup(z + depth + gap * 0.5f)
             maybeSpawnTurret(z, depth + gap)
@@ -542,15 +567,16 @@ class Game(private val prefs: SharedPreferences) {
         e.phase = 0f
     }
 
+    /** Pickups come on timers measured in seconds, so speed doesn't change how many you get. */
     private fun maybeSpawnPickup(z: Float) {
-        val shieldChance = 0.10f + if (energy < 40f) 0.12f else 0f
-        val weaponChance = if (weaponLevel < 4) 0.06f else 0.02f
-        val slowChance = if (slowTime > 0f) 0f else 0.03f + 0.06f * difficulty
-        val r = rng.nextFloat()
         val kind = when {
-            r < shieldChance -> Kind.PICKUP_SHIELD
-            r < shieldChance + weaponChance -> Kind.PICKUP_WEAPON
-            r < shieldChance + weaponChance + slowChance -> Kind.PICKUP_SLOW
+            shieldOrbTimer <= 0f -> { shieldOrbTimer = SHIELD_ORB_EVERY + rand(-4f, 4f); Kind.PICKUP_SHIELD }
+            slowOrbTimer <= 0f && difficulty > 0.2f && slowTime <= 0f -> { slowOrbTimer = SLOW_ORB_EVERY + rand(-5f, 5f); Kind.PICKUP_SLOW }
+            weaponOrbTimer <= 0f -> {
+                weaponOrbTimer = WEAPON_ORB_EVERY + rand(-5f, 5f)
+                if (weaponLevel >= 4 && rng.nextFloat() < 0.6f) return
+                Kind.PICKUP_WEAPON
+            }
             else -> return
         }
         val x = rand(-4f, 4f)

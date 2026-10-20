@@ -700,6 +700,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         // score
         text(c, "%,d".format(g.score), w - pad, pad + ts, ts * 1.2f, 0xFFFFFFFF.toInt(), Paint.Align.RIGHT)
         text(c, "%,d m".format((g.distance).toInt()), w - pad, pad + ts * 2.2f, ts * 0.75f, 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
+        val spd = (g.speed * 10f).toInt()
+        text(c, "SPEED %d".format(spd), w - pad, pad + ts * 3.2f, ts * 0.75f,
+            if (g.slowTime > 0f) SLOW else 0xBBFFFFFF.toInt(), Paint.Align.RIGHT)
 
         if (g.state != Game.State.PLAYING) return
 

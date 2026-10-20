@@ -3,6 +3,8 @@ package com.randaladams.trenchrun
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -35,8 +37,8 @@ class Sound(context: Context) {
     private val ids = java.util.concurrent.ConcurrentHashMap<Game.Sfx, Int>()
     @Volatile private var engineId = 0
     @Volatile private var shieldLoopId = 0
-    @Volatile private var alarmId = 0
-    private var alarmStream = 0
+    @Volatile private var ttsReady = false
+    private var tts: TextToSpeech? = null
     private val loaded = HashSet<Int>()
 
     private var engineStream = 0
@@ -45,6 +47,24 @@ class Sound(context: Context) {
     @Volatile var enabled = true
 
     init {
+        // Spoken warnings use the phone's built-in text-to-speech voice (silently skipped if unavailable).
+        try {
+            tts = TextToSpeech(context.applicationContext) { status ->
+                val t = tts
+                if (status == TextToSpeech.SUCCESS && t != null) {
+                    val res = t.setLanguage(Locale.US)
+                    t.setPitch(0.85f)
+                    t.setSpeechRate(1.1f)
+                    t.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_GAME)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    ttsReady = res != TextToSpeech.LANG_MISSING_DATA && res != TextToSpeech.LANG_NOT_SUPPORTED
+                }
+            }
+        } catch (_: Exception) { tts = null }
         pool.setOnLoadCompleteListener { _, sampleId, status -> if (status == 0) synchronized(loaded) { loaded.add(sampleId) } }
         val dir = File(context.cacheDir, "sfx").apply { mkdirs() }
         Thread {
@@ -66,7 +86,7 @@ class Sound(context: Context) {
                 ids[Game.Sfx.ENEMY_FIRE] = load("enemy_fire", enemyFire())
                 ids[Game.Sfx.TURRET_CHARGE] = load("turret_charge", turretCharge())
                 ids[Game.Sfx.SLOW] = load("slow", slowMo())
-                alarmId = load("alarm", alarmLoop())
+                ids[Game.Sfx.ALARM] = load("alarm", alarmBeep())
                 engineId = load("engine", engineLoop())
                 shieldLoopId = load("shield_loop", shieldLoop())
             } catch (_: Exception) {
@@ -79,6 +99,10 @@ class Sound(context: Context) {
 
     fun play(s: Game.Sfx, pan: Float = 0f) {
         if (!enabled) return
+        if (s == Game.Sfx.VOICE_CRITICAL || s == Game.Sfx.VOICE_DEPLETED) {
+            speak(if (s == Game.Sfx.VOICE_CRITICAL) "Warning. Shield critical." else "Shields down!")
+            return
+        }
         val id = ids[s] ?: return
         if (!ready(id)) return
         val vol = when (s) {
@@ -95,13 +119,17 @@ class Sound(context: Context) {
     }
 
     /** Called every frame to keep the looping engine and shield hums in the right state. */
-    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean, alarmOn: Boolean) {
-        val wantAlarm = enabled && alarmOn
-        if (wantAlarm && alarmStream == 0 && ready(alarmId)) {
-            alarmStream = pool.play(alarmId, 0.55f, 0.55f, 2, -1, 1f)
-        } else if (!wantAlarm && alarmStream != 0) {
-            pool.stop(alarmStream); alarmStream = 0
-        }
+    private fun speak(text: String) {
+        val t = tts ?: return
+        if (!ttsReady) return
+        // short delay so the voice lands right after the warning beep
+        Thread {
+            try { Thread.sleep(450) } catch (_: InterruptedException) {}
+            if (enabled) t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "warn")
+        }.start()
+    }
+
+    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean) {
 
         val wantEngine = enabled && engineOn
         if (wantEngine && engineStream == 0 && ready(engineId)) {
@@ -120,12 +148,11 @@ class Sound(context: Context) {
     }
 
     fun stopLoops() {
-        if (alarmStream != 0) { pool.stop(alarmStream); alarmStream = 0 }
         if (engineStream != 0) { pool.stop(engineStream); engineStream = 0 }
         if (shieldStream != 0) { pool.stop(shieldStream); shieldStream = 0 }
     }
 
-    fun release() { stopLoops(); pool.release() }
+    fun release() { stopLoops(); pool.release(); tts?.shutdown() }
 
     // ------------------------------------------------------------- synthesis
 
@@ -303,7 +330,7 @@ class Sound(context: Context) {
     }
 
     /** Two-tone warning beeps, 1 second, silent at the edges so it loops cleanly. */
-    private fun alarmLoop(): FloatArray {
+    private fun alarmBeep(): FloatArray {
         val out = buf(1f)
         fun beep(start: Float, freq: Float) {
             val a = (start * RATE).toInt()

@@ -126,8 +126,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 sound.updateLoops(
                     flying || game.state == Game.State.TITLE,
                     (game.speed - Game.BASE_SPEED) / (Game.MAX_SPEED - Game.BASE_SPEED),
-                    flying && game.shieldUp,
-                    flying && game.critical
+                    flying && game.shieldUp
                 )
             }
 
