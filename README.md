@@ -2,11 +2,11 @@
 
 A tilt-controlled Android arcade prototype: fly a fighter down a long trench, dodging bridges, raised floors and walls while blasting drones.
 
-## Install on your phone
+## Download (always the newest build)
 
-1. On your Android phone, open the repo's **Releases** page and find **Trench Run prototype**.
-2. Download `TrenchRun.apk` and open it. Allow installs from your browser if Android asks.
-3. Every push to `main` rebuilds the APK automatically (see the **Actions** tab). New builds install over the old one.
+**https://github.com/randaladams/Trench-Run/releases/latest/download/TrenchRun.apk**
+
+Open that link on your Android phone, then open the downloaded file to install. Allow installs from your browser if Android asks. This link never changes: every push to `main` rebuilds the game (see the **Actions** tab, about 2 minutes) and replaces the file behind it. New builds install over the old one, and the build number shows in the corner of the title screen.
 
 ## How to play
 
@@ -18,12 +18,13 @@ A tilt-controlled Android arcade prototype: fly a fighter down a long trench, do
 | Hold the **right** side of the screen | Raise the shield |
 
 - Hold the phone however is comfortable, then tap to launch. That angle becomes "level".
-- **Shield energy** is your lifeline. A hit costs 34 energy, or only 12 if your shield is raised. Raising it drains energy while held, and energy slowly rebuilds as you fly.
+- **Color code: red and striped = danger. Glowing cyan and green orbs = good.**
+- **Shield energy** is your lifeline. A hit costs 40 energy, or 15 if your shield is raised. Raising it drains energy while held. Energy rebuilds slowly as you fly (0.5/s, growing a little with distance) and +4 for every drone you shoot down.
 - **If you hit something with no shield energy left, the run is over.**
-- **Cyan cells** restore 35 shield energy. **Orange cores** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot).
+- **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot).
 - Red drones can be shot down for 100 points each. The crosshair turns red when one is in your line of fire.
 - Speed and obstacle density increase the farther you go.
-- Back button pauses.
+- Back button pauses. Sound can be turned off on the title screen; the phone volume buttons adjust it.
 
 Emulator testing: arrow keys steer, Space fires, Shift or Z raises the shield, Enter launches.
 
@@ -37,5 +38,7 @@ Plain Kotlin + Android Canvas, no game engine or extra libraries.
 | `Renderer.kt` | Perspective projection of the trench, obstacles, ship, lasers and HUD. |
 | `GameView.kt` | Game loop thread, tilt sensor reading, multi-touch zones. |
 | `Entities.kt` | Obstacle, laser bolt and particle data. |
+| `Textures.kt` | Procedurally painted wall and floor textures (plating, pipes, vents, lights). |
+| `Sound.kt` | Synthesized sound effects and engine/shield hum loops. |
 
 Build locally with Android Studio, or `./gradlew assembleDebug`.

@@ -28,16 +28,25 @@ class Game(private val prefs: SharedPreferences) {
 
         // ---- tuning knobs ----
         const val MAX_ENERGY = 100f
-        const val HIT_DAMAGE = 34f       // hit with shield down
-        const val SHIELDED_DAMAGE = 12f  // hit with shield raised
+        const val HIT_DAMAGE = 40f       // hit with shield down
+        const val SHIELDED_DAMAGE = 15f  // hit with shield raised
         const val SHIELD_DRAIN = 14f     // energy per second while shield is raised
-        const val BASE_SPEED = 40f
-        const val SPEED_GAIN = 48f       // added speed at full difficulty
+        const val REGEN_BASE = 0.5f      // energy per second rebuilt while flying
+        const val REGEN_MAX = 1.5f       // regen slowly grows with distance up to this
+        const val KILL_ENERGY = 4f       // energy gained for each drone destroyed
+        const val PICKUP_ENERGY = 25f
+        const val BASE_SPEED = 30f
+        const val SPEED_GAIN = 36f       // added speed at full difficulty
         const val DIFFICULTY_DISTANCE = 6000f
         const val BOLT_SPEED = 160f
     }
 
     enum class State { TITLE, PLAYING, GAME_OVER }
+    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, SHIELD_UP, START }
+
+    /** Sound events raised this frame; GameView drains and plays them. */
+    val sfx = ArrayList<Sfx>()
+    private fun play(s: Sfx) { if (!sfx.contains(s)) sfx.add(s) }
 
     var state = State.TITLE
         private set
@@ -74,6 +83,9 @@ class Game(private val prefs: SharedPreferences) {
     var invertPitch = prefs.getBoolean("invertPitch", false)
         set(v) { field = v; prefs.edit().putBoolean("invertPitch", v).apply() }
 
+    var soundOn = prefs.getBoolean("soundOn", true)
+        set(v) { field = v; prefs.edit().putBoolean("soundOn", v).apply() }
+
     var message = ""
     var messageTime = 0f
 
@@ -105,6 +117,7 @@ class Game(private val prefs: SharedPreferences) {
         paused = false
         state = State.PLAYING
         stateTime = 0f
+        play(Sfx.START)
         showMessage("GOOD LUCK, PILOT", 2f)
     }
 
@@ -116,6 +129,7 @@ class Game(private val prefs: SharedPreferences) {
         explode(px, py, 0f, 0xFFFFFFFF.toInt(), 25, 8f)
         shake = 1.6f
         hapticPending = true
+        play(Sfx.GAME_OVER)
         if (score > highScore) {
             highScore = score
             newHigh = true
@@ -148,7 +162,7 @@ class Game(private val prefs: SharedPreferences) {
 
     private fun updateTitle(dt: Float) {
         // Attract mode: autopilot cruising down an empty trench.
-        speed = 45f
+        speed = 34f
         distance += speed * dt
         val nx = sin(time * 0.6f) * 3f
         val ny = Y_MID + sin(time * 0.9f) * 2.5f
@@ -180,11 +194,13 @@ class Game(private val prefs: SharedPreferences) {
         spawn()
 
         // ---- shield: raising it drains energy; energy slowly rebuilds as you fly
+        val wasUp = shieldUp
         shieldUp = shieldHeld && energy > 0.5f
+        if (shieldUp && !wasUp) play(Sfx.SHIELD_UP)
         if (shieldUp) {
             energy = max(0f, energy - SHIELD_DRAIN * dt)
         } else {
-            val regen = min(6f, 2f + distance / 3000f)
+            val regen = min(REGEN_MAX, REGEN_BASE + distance / 20000f)
             energy = min(MAX_ENERGY, energy + regen * dt)
         }
         invuln = max(0f, invuln - dt)
@@ -206,6 +222,7 @@ class Game(private val prefs: SharedPreferences) {
                     if (e.kind == Kind.DRONE) {
                         e.alive = false
                         explode(e.cx, e.cy, e.z0, 0xFFFF6030.toInt(), 30, 9f)
+                        play(Sfx.EXPLODE)
                     }
                     if (state == State.PLAYING) onHit()
                 }
@@ -242,6 +259,7 @@ class Game(private val prefs: SharedPreferences) {
         energy = max(0f, energy - if (shieldUp) SHIELDED_DAMAGE else HIT_DAMAGE)
         invuln = 0.8f
         if (shieldUp) shieldFlash = 1f else hitFlash = 1f
+        play(if (shieldUp) Sfx.SHIELD_HIT else Sfx.HIT)
         shake = if (shieldUp) 0.5f else 1.0f
         hapticPending = true
         explode(px, py, 0.6f, if (shieldUp) 0xFF60E8FF.toInt() else 0xFFFFC060.toInt(), 22, 7f)
@@ -251,11 +269,13 @@ class Game(private val prefs: SharedPreferences) {
     private fun collect(e: Entity) {
         e.alive = false
         if (e.kind == Kind.PICKUP_SHIELD) {
-            energy = min(MAX_ENERGY, energy + 35f)
+            energy = min(MAX_ENERGY, energy + PICKUP_ENERGY)
             bonus += 50
-            showMessage("SHIELD +35")
+            showMessage("SHIELD +${PICKUP_ENERGY.toInt()}")
+            play(Sfx.PICKUP)
             explode(e.cx, e.cy, e.z0, 0xFF60E8FF.toInt(), 18, 5f)
         } else {
+            play(Sfx.UPGRADE)
             if (weaponLevel < 4) {
                 weaponLevel++
                 showMessage("LASER UPGRADE: MK ${weaponName()}")
@@ -263,7 +283,7 @@ class Game(private val prefs: SharedPreferences) {
                 bonus += 250
                 showMessage("WEAPONS MAXED +250")
             }
-            explode(e.cx, e.cy, e.z0, 0xFFFFA020.toInt(), 18, 5f)
+            explode(e.cx, e.cy, e.z0, 0xFF7CFF4A.toInt(), 18, 5f)
         }
     }
 
@@ -282,6 +302,7 @@ class Game(private val prefs: SharedPreferences) {
             else -> { rate = 9f; offsets = floatArrayOf(-1.1f, 0f, 1.1f); dmg = 2 }
         }
         fireCooldown = 1f / rate
+        play(Sfx.LASER)
         for (ox in offsets) {
             // Bolts start at the wing tips and converge on the crosshair point.
             val sx = px + ox; val sy = py - 0.05f; val sz = 1f
@@ -312,6 +333,8 @@ class Game(private val prefs: SharedPreferences) {
                         if (e.hp <= 0) {
                             e.alive = false
                             kills++
+                            energy = min(MAX_ENERGY, energy + KILL_ENERGY)
+                            play(Sfx.EXPLODE)
                             explode(e.cx, e.cy, hz, 0xFFFF7030.toInt(), 34, 10f)
                             explode(e.cx, e.cy, hz, 0xFFFFE080.toInt(), 12, 5f)
                         } else {
@@ -362,7 +385,7 @@ class Game(private val prefs: SharedPreferences) {
             val depth = spawnPattern(z)
             // gap scales with speed so reaction time stays fair, shrinking as difficulty rises
             val reaction = 0.8f - 0.4f * difficulty + rng.nextFloat() * 0.25f
-            val gap = max(14f, speed * reaction)
+            val gap = max(18f, speed * reaction)
             maybeSpawnPickup(z + depth + gap * 0.5f)
             nextSpawnAt += depth + gap
         }
@@ -385,40 +408,40 @@ class Game(private val prefs: SharedPreferences) {
 
         return when (pick) {
             0 -> {
-                val y0 = rand(1.8f, 6.4f)
-                addBox(Kind.BRIDGE, -HALF_W, HALF_W, y0, y0 + 1.5f, z, 2f)
+                val y0 = rand(2.2f, 6.8f)
+                addBox(Kind.BRIDGE, -HALF_W, HALF_W, y0, y0 + 1.0f, z, 1.6f)
                 if (d > 0.3f && rng.nextFloat() < 0.4f) {
-                    val y1 = if (y0 > 4f) rand(1.8f, 3.2f) else rand(5f, 6.4f)
-                    addBox(Kind.BRIDGE, -HALF_W, HALF_W, y1, y1 + 1.5f, z + 9f, 2f)
+                    val y1 = if (y0 > 4.5f) rand(2.2f, 3.4f) else rand(5.6f, 6.8f)
+                    addBox(Kind.BRIDGE, -HALF_W, HALF_W, y1, y1 + 1.0f, z + 9f, 1.6f)
                     11f
                 } else 2f
             }
             1 -> {
-                val h = rand(2f, 5.2f)
-                val len = rand(6f, 14f)
+                val h = rand(1.6f, 3.8f)
+                val len = rand(5f, 10f)
                 addBox(Kind.RAISED_FLOOR, -HALF_W, HALF_W, 0f, h, z, len)
                 len
             }
             2 -> {
-                val y0 = rand(3.5f, 7f)
-                val len = rand(3f, 8f)
+                val y0 = rand(5.6f, 7.6f)
+                val len = rand(3f, 7f)
                 addBox(Kind.CEILING, -HALF_W, HALF_W, y0, TOP, z, len)
                 len
             }
             3 -> {
-                val reach = rand(-0.5f, 1.5f)
+                val reach = rand(-2.6f, -0.8f)   // never past the centerline
                 if (rng.nextBoolean()) addBox(Kind.SIDE_BLOCK, -HALF_W, reach, 0f, TOP, z, 3f)
                 else addBox(Kind.SIDE_BLOCK, -reach, HALF_W, 0f, TOP, z, 3f)
                 3f
             }
             4 -> {
                 val off = rand(-1.5f, 1.5f)
-                addBox(Kind.PILLAR, off - 1.6f, off + 1.6f, 0f, TOP, z, 3f)
+                addBox(Kind.PILLAR, off - 1.0f, off + 1.0f, 0f, TOP, z, 2.5f)
                 3f
             }
             5 -> {
-                val h = rand(1.5f, 4f)
-                val gapH = 3.4f - 0.4f * d
+                val h = rand(1.4f, 3f)
+                val gapH = 4.8f - 0.6f * d
                 addBox(Kind.RAISED_FLOOR, -HALF_W, HALF_W, 0f, h, z, 4f)
                 addBox(Kind.CEILING, -HALF_W, HALF_W, h + gapH, TOP, z, 4f)
                 4f

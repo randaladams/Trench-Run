@@ -1,13 +1,16 @@
 package com.randaladams.trenchrun
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LightingColorFilter
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
@@ -19,23 +22,19 @@ import kotlin.math.sin
  * Draws the game with a simple perspective projection onto an Android Canvas.
  * No engine or 3D API needed: every surface is a projected quad, painted far to near.
  */
-class Renderer(private val density: Float) {
+class Renderer(private val density: Float, private val buildLabel: String) {
 
     companion object {
         private const val SEG = 6f
         private const val SPACE = 0xFF05070F.toInt()
         private const val FOG = 0xFF0B1020.toInt()
-        private const val FLOOR = 0xFF3A4150.toInt()
-        private const val WALL_L = 0xFF545C6C.toInt()
-        private const val WALL_R = 0xFF434A59.toInt()
-        private const val EDGE = 0xFF8A93A6.toInt()
-        private const val AMBER = 0xFFFFB347.toInt()
-        private const val LAMP = 0xFFFFD890.toInt()
-        private const val BRIDGE = 0xFF7C5A4E.toInt()
-        private const val BLOCK = 0xFF66707F.toInt()
-        private const val DRONE = 0xFF8C2A2A.toInt()
-        private const val SHIELD = 0xFF40E0FF.toInt()
-        private const val WEAPON = 0xFFFFA020.toInt()
+        private const val EDGE = 0xFF9AA3B6.toInt()
+        private const val SURFACE = 0xFF5C6373.toInt()
+        private const val HAZ_METAL = 0xFF3E3A40.toInt()   // obstacles: dark metal...
+        private const val HAZ_RED = 0xFFE8321E.toInt()     // ...with red stripes, lamps and edges
+        private const val DRONE = 0xFF7A1410.toInt()
+        const val SHIELD = 0xFF40E0FF.toInt()               // good: cyan
+        const val WEAPON = 0xFF7CFF4A.toInt()               // good: green
         private const val HUD = 0xFF9FF5C8.toInt()
         private const val DANGER = 0xFFFF4A4A.toInt()
     }
@@ -54,8 +53,28 @@ class Renderer(private val density: Float) {
     private val byDepth = Comparator<Entity> { a, b -> b.z0.compareTo(a.z0) }
     private val shakeRnd = java.util.Random()
 
-    /** Hit area of the pitch-direction toggle on the title screen (read by GameView). */
+    /** Hit areas of the title-screen toggles (read by GameView). */
     val toggleRect = RectF()
+    val soundRect = RectF()
+
+    private val wallTex = Textures.walls(4)
+    private val floorTex = Textures.floors(2)
+    private val texMatrix = Matrix()
+    private val src = FloatArray(8)
+    private val dst = FloatArray(8)
+    private val texPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    // Fog for textures: color * (1 - t) * shade + fogColor * t, cached at 33 fog levels
+    private val fogFilters = Array(2) { si ->
+        val k = if (si == 0) 1f else 0.8f
+        Array(33) { i ->
+            val t = i / 32f
+            val m = ((1f - t) * k * 255f).toInt()
+            LightingColorFilter(
+                Color.rgb(m, m, m),
+                Color.rgb((Color.red(FOG) * t).toInt(), (Color.green(FOG) * t).toInt(), (Color.blue(FOG) * t).toInt())
+            )
+        }
+    }
 
     private var w = 0f; private var h = 0f
     private var f = 0f; private var cx = 0f; private var cy = 0f
@@ -190,6 +209,8 @@ class Renderer(private val density: Float) {
         val top = Game.TOP
         val kNear = floor((g.distance + near) / SEG).toInt()
         val kFar = floor((g.distance + Game.FAR) / SEG).toInt()
+        val ww = Textures.WALL_W.toFloat(); val wh = Textures.WALL_H.toFloat()
+        val fw = Textures.FLOOR_W.toFloat(); val fh = Textures.FLOOR_H.toFloat()
 
         for (k in kFar downTo kNear) {
             val zA = k * SEG - g.distance
@@ -198,35 +219,23 @@ class Renderer(private val density: Float) {
             if (zb <= za) continue
             val t = fogT(za)
             val hs = hash(k)
-            val v = (if ((k and 1) == 0) 1f else 0.9f) * (0.93f + (hs % 15) / 100f)
+            val partial = za > zA || zb < zA + SEG
+            val u0 = (za - zA) / SEG * ww; val u1 = (zb - zA) / SEG * ww
 
-            // floor and walls
-            quad(-hw, 0f, za, hw, 0f, za, hw, 0f, zb, -hw, 0f, zb, fog(shade(FLOOR, v), t), c)
-            quad(-hw, 0f, za, -hw, top, za, -hw, top, zb, -hw, 0f, zb, fog(shade(WALL_L, v), t), c)
-            quad(hw, 0f, za, hw, top, za, hw, top, zb, hw, 0f, zb, fog(shade(WALL_R, v), t), c)
+            // textured floor (v = 0 at the far edge of the segment)
+            val fv0 = (zA + SEG - zb) / SEG * fh; val fv1 = (zA + SEG - za) / SEG * fh
+            texQuad(c, floorTex[hs % floorTex.size], 0f, fv0, fw, fv1,
+                -hw, 0f, zb, hw, 0f, zb, hw, 0f, za, -hw, 0f, za, fogFilter(0, t), partial)
 
-            // recessed wall panels
-            if (hs % 3 == 0) panel(c, -hw, 1.5f, 4.5f, zA + 1f, zA + SEG - 1f, shade(WALL_L, 0.68f), t)
-            if ((hs shr 3) % 3 == 0) panel(c, hw, 5f, 8.5f, zA + 1f, zA + SEG - 1f, shade(WALL_R, 0.68f), t)
-            if ((hs shr 6) % 4 == 0) panel(c, -hw, 6f, 8.8f, zA + 0.5f, zA + 3f, shade(WALL_L, 0.8f), t)
-
-            // small lamps on the walls (they cut through the fog a bit)
-            if (hs % 5 == 0) panel(c, -hw, 7f, 7.5f, zA + 2f, zA + 3f, LAMP, t * 0.6f)
-            if ((hs shr 4) % 5 == 0) panel(c, hw, 2.6f, 3.1f, zA + 2f, zA + 3f, LAMP, t * 0.6f)
-
-            // amber guide lights on the floor give a strong sense of speed
-            if (k % 2 == 0) {
-                val z1 = max(zA + 1f, near); val z2 = zA + 3f
-                if (z2 > z1) {
-                    val col = fog(shade(AMBER, 0.75f), t * 0.8f)
-                    quad(-3.2f, 0f, z1, -2.8f, 0f, z1, -2.8f, 0f, z2, -3.2f, 0f, z2, col, c)
-                    quad(2.8f, 0f, z1, 3.2f, 0f, z1, 3.2f, 0f, z2, 2.8f, 0f, z2, col, c)
-                }
-            }
+            // textured walls (row 0 = top of the wall)
+            texQuad(c, wallTex[hs % wallTex.size], u0, 0f, u1, wh,
+                -hw, top, za, -hw, top, zb, -hw, 0f, zb, -hw, 0f, za, fogFilter(0, t), partial)
+            texQuad(c, wallTex[(hs shr 4) % wallTex.size], u0, 0f, u1, wh,
+                hw, top, za, hw, top, zb, hw, 0f, zb, hw, 0f, za, fogFilter(1, t), partial)
 
             // structures on the surface above the walls
-            if (hs % 11 == 0) box(c, -hw - 3f, -hw - 0.6f, top, top + rand01(hs) * 2.5f + 0.8f, zA + 1f, zA + 4f, BLOCK, false)
-            if ((hs shr 5) % 11 == 0) box(c, hw + 0.6f, hw + 3f, top, top + rand01(hs shr 2) * 2.5f + 0.8f, zA + 1f, zA + 4f, BLOCK, false)
+            if (hs % 11 == 0) box(c, -hw - 3f, -hw - 0.6f, top, top + rand01(hs) * 2.5f + 0.8f, zA + 1f, zA + 4f, SURFACE, 0, bottom = false)
+            if ((hs shr 5) % 11 == 0) box(c, hw + 0.6f, hw + 3f, top, top + rand01(hs shr 2) * 2.5f + 0.8f, zA + 1f, zA + 4f, SURFACE, 0, bottom = false)
 
             // bright wall top edges
             line.color = fog(EDGE, t)
@@ -238,121 +247,214 @@ class Renderer(private val density: Float) {
 
     private fun rand01(h: Int) = (h % 1000) / 1000f
 
-    /** A rectangle lying flat on a wall at x = wx. */
-    private fun panel(c: Canvas, wx: Float, y0: Float, y1: Float, z0In: Float, z1: Float, color: Int, t: Float) {
-        val z0 = max(z0In, near)
-        if (z1 <= z0) return
-        quad(wx, y0, z0, wx, y1, z0, wx, y1, z1, wx, y0, z1, fog(color, t), c)
+    private fun fogFilter(shadeIdx: Int, t: Float) = fogFilters[shadeIdx][(t * 32f + 0.5f).toInt().coerceIn(0, 32)]
+
+    /**
+     * Draws a rectangle of a texture (u0,v0)-(u1,v1) onto a world-space quad with true
+     * perspective, using a 4-point poly-to-poly matrix. Corners go top-left, top-right,
+     * bottom-right, bottom-left in texture space.
+     */
+    private fun texQuad(
+        c: Canvas, bmp: Bitmap, u0: Float, v0: Float, u1: Float, v1: Float,
+        x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
+        x3: Float, y3: Float, z3: Float, x4: Float, y4: Float, z4: Float,
+        filter: LightingColorFilter, clip: Boolean
+    ) {
+        src[0] = u0; src[1] = v0; src[2] = u1; src[3] = v0
+        src[4] = u1; src[5] = v1; src[6] = u0; src[7] = v1
+        dst[0] = sx(x1, z1); dst[1] = sy(y1, z1); dst[2] = sx(x2, z2); dst[3] = sy(y2, z2)
+        dst[4] = sx(x3, z3); dst[5] = sy(y3, z3); dst[6] = sx(x4, z4); dst[7] = sy(y4, z4)
+        if (!texMatrix.setPolyToPoly(src, 0, dst, 0, 4)) return
+        texPaint.colorFilter = filter
+        if (clip) {
+            path.reset()
+            path.moveTo(dst[0], dst[1]); path.lineTo(dst[2], dst[3])
+            path.lineTo(dst[4], dst[5]); path.lineTo(dst[6], dst[7]); path.close()
+            c.save()
+            c.clipPath(path)
+            c.drawBitmap(bmp, texMatrix, texPaint)
+            c.restore()
+        } else {
+            c.drawBitmap(bmp, texMatrix, texPaint)
+        }
     }
 
     /** Axis-aligned box. Only faces that point toward the camera are drawn. */
     private fun box(
         c: Canvas, x0: Float, x1: Float, y0: Float, y1: Float, z0In: Float, z1: Float,
-        color: Int, outline: Boolean = true, flash: Float = 0f
-    ) {
+        color: Int, outlineColor: Int, flash: Float = 0f, bottom: Boolean = true
+    ): Boolean {
         val z0 = max(z0In, near)
-        if (z1 <= z0 || z0 > Game.FAR) return
+        if (z1 <= z0 || z0 > Game.FAR) return false
         val t = fogT(z0)
         val base = if (flash > 0f) mix(color, 0xFFFFFFFF.toInt(), flash * 0.8f) else color
         if (camY > y1) quad(x0, y1, z0, x1, y1, z0, x1, y1, z1, x0, y1, z1, fog(shade(base, 1.3f), t), c)
-        if (camY < y0 && outline) quad(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, fog(shade(base, 0.55f), t), c)
+        if (bottom && camY < y0) quad(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, fog(shade(base, 0.55f), t), c)
         if (camX < x0) quad(x0, y0, z0, x0, y1, z0, x0, y1, z1, x0, y0, z1, fog(shade(base, 0.78f), t), c)
         if (camX > x1) quad(x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, fog(shade(base, 0.78f), t), c)
         // the front face is always a screen-aligned rectangle
         rect.set(sx(x0, z0), sy(y1, z0), sx(x1, z0), sy(y0, z0))
         fill.color = fog(base, t)
         c.drawRect(rect, fill)
-        if (outline) {
-            line.color = fog(shade(base, 1.6f), t)
-            line.strokeWidth = dp(1.2f)
+        if (outlineColor != 0) {
+            line.color = fog(outlineColor, t)
+            line.strokeWidth = max(dp(1.5f), 0.07f * scaleAt(z0))
             c.drawRect(rect, line)
         }
+        return true
     }
 
     // -------------------------------------------------------------- entities
+    // Color language: anything RED / striped is dangerous, glowing CYAN and GREEN orbs are good.
 
     private fun drawEntity(c: Canvas, e: Entity, g: Game) {
+        val blink = ((g.time * 3f + e.z0 * 0.05f).toInt() % 2 == 0)
         when (e.kind) {
-            Kind.PICKUP_SHIELD, Kind.PICKUP_WEAPON -> drawPickup(c, e)
+            Kind.PICKUP_SHIELD, Kind.PICKUP_WEAPON -> drawPickup(c, e, g)
             Kind.DRONE -> drawDrone(c, e, g)
-            Kind.BRIDGE -> {
-                box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, BRIDGE)
-                hazardStripe(c, e)
+            Kind.BRIDGE -> if (box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) {
+                stripes(c, e.x0, e.x1, e.y0 + 0.2f, e.y1 - 0.2f, e.z0)
+                lamps(c, e, e.y1 - 0.05f, blink)
             }
-            Kind.CEILING -> {
-                box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, BRIDGE)
-                hazardStripe(c, e)
+            Kind.CEILING -> if (box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) {
+                stripes(c, e.x0, e.x1, e.y0, e.y0 + 0.55f, e.z0)
+                lamps(c, e, e.y0 + 0.8f, blink)
             }
-            else -> box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, BLOCK)
+            Kind.RAISED_FLOOR -> if (box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) {
+                stripes(c, e.x0, e.x1, e.y1 - 0.55f, e.y1, e.z0)
+                lamps(c, e, e.y1 - 0.8f, blink)
+            }
+            Kind.SIDE_BLOCK -> if (box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) {
+                // stripe the edge that sticks out into the trench
+                if (e.x0 <= -Game.HALF_W + 0.01f) stripes(c, e.x1 - 0.6f, e.x1, e.y0, e.y1, e.z0)
+                else stripes(c, e.x0, e.x0 + 0.6f, e.y0, e.y1, e.z0)
+            }
+            Kind.PILLAR -> if (box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) {
+                stripes(c, e.x0, e.x0 + 0.45f, e.y0, e.y1, e.z0)
+                stripes(c, e.x1 - 0.45f, e.x1, e.y0, e.y1, e.z0)
+            }
         }
     }
 
-    private fun hazardStripe(c: Canvas, e: Entity) {
-        val z = max(e.z0, near)
+    /** Diagonal red/black hazard stripes on the front face of an obstacle. */
+    private fun stripes(c: Canvas, xa: Float, xb: Float, ya: Float, yb: Float, zIn: Float) {
+        val z = max(zIn, near)
         val t = fogT(z)
-        val yb = e.y0 + 0.2f
-        val yt = e.y0 + 0.45f
-        val n = 12
-        val step = (e.x1 - e.x0) / n
+        val l = sx(xa, z); val r = sx(xb, z); val top = sy(yb, z); val bot = sy(ya, z)
+        if (r <= l || bot <= top) return
+        rect.set(l, top, r, bot)
+        fill.color = fog(0xFF15151A.toInt(), t)
+        c.drawRect(rect, fill)
+        val sw = max(dp(3f), 0.35f * scaleAt(z))
+        val hgt = bot - top
+        c.save()
+        c.clipRect(rect)
+        fill.color = fog(HAZ_RED, t)
+        var x = l - hgt
+        while (x < r) {
+            path.reset()
+            path.moveTo(x, bot); path.lineTo(x + sw, bot); path.lineTo(x + sw + hgt, top); path.lineTo(x + hgt, top); path.close()
+            c.drawPath(path, fill)
+            x += sw * 2f
+        }
+        c.restore()
+    }
+
+    /** Blinking red warning lamps along the front of an obstacle. */
+    private fun lamps(c: Canvas, e: Entity, y: Float, on: Boolean) {
+        val z = max(e.z0, near)
+        val t = fogT(z) * 0.5f
+        val s = scaleAt(z)
+        val n = 4
         for (i in 0 until n) {
-            if (i % 2 == 1) continue
-            val xa = e.x0 + i * step
-            rect.set(sx(xa, z), sy(yt, z), sx(xa + step, z), sy(yb, z))
-            fill.color = fog(AMBER, t)
-            c.drawRect(rect, fill)
+            val x = e.x0 + (e.x1 - e.x0) * (i + 0.5f) / n
+            val px = sx(x, z); val py = sy(y, z)
+            if (on) {
+                fill.color = withAlpha(fog(0xFFFF2A1A.toInt(), t), 0.35f)
+                c.drawCircle(px, py, 0.45f * s, fill)
+            }
+            fill.color = fog(if (on) 0xFFFF6A50.toInt() else 0xFF5A1A14.toInt(), t)
+            c.drawCircle(px, py, max(dp(1.5f), 0.14f * s), fill)
         }
     }
 
     private fun drawDrone(c: Canvas, e: Entity, g: Game) {
-        box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, DRONE, true, e.hitFlash)
         val z = max(e.z0, near)
+        if (z >= e.z1) return
         val t = fogT(z)
         val s = scaleAt(z)
         val px = sx(e.cx, z); val py = sy(e.cy, z)
+        val spin = g.time * 2.5f + e.phase
         val pulse = 0.75f + 0.25f * sin(g.time * 10f + e.phase)
-        fill.color = withAlpha(fog(0xFFFF5030.toInt(), t), 0.35f)
-        c.drawCircle(px, py, 0.7f * s, fill)
-        fill.color = fog(mix(0xFFFF5030.toInt(), 0xFFFFE0A0.toInt(), pulse - 0.5f), t)
-        c.drawCircle(px, py, 0.28f * s * pulse, fill)
-        // side vanes
-        line.color = fog(0xFFB0B6C2.toInt(), t)
-        line.strokeWidth = max(dp(1f), 0.08f * s)
-        c.drawLine(sx(e.x0 - 0.5f, z), py, sx(e.x0, z), py, line)
-        c.drawLine(sx(e.x1, z), py, sx(e.x1 + 0.5f, z), py, line)
+        val flash = e.hitFlash
+
+        // red danger aura
+        fill.color = withAlpha(fog(0xFFFF2A1A.toInt(), t), 0.22f + 0.1f * pulse)
+        c.drawCircle(px, py, 1.25f * s, fill)
+
+        // spikes
+        line.color = fog(mix(0xFFB8BEC8.toInt(), 0xFFFFFFFF.toInt(), flash), t)
+        line.strokeWidth = max(dp(1.5f), 0.12f * s)
+        for (i in 0 until 8) {
+            val a = spin + i * (Math.PI.toFloat() / 4f)
+            val r1 = 0.45f * s; val r2 = (if (i % 2 == 0) 1.05f else 0.8f) * s
+            c.drawLine(px + cos(a) * r1, py + sin(a) * r1, px + cos(a) * r2, py + sin(a) * r2, line)
+        }
+        // body
+        fill.color = fog(mix(DRONE, 0xFFFFFFFF.toInt(), flash * 0.8f), t)
+        c.drawCircle(px, py, 0.55f * s, fill)
+        line.color = fog(HAZ_RED, t)
+        line.strokeWidth = max(dp(1.2f), 0.06f * s)
+        c.drawCircle(px, py, 0.55f * s, line)
+        // eye
+        fill.color = fog(0xFF2A0606.toInt(), t)
+        c.drawCircle(px, py, 0.3f * s, fill)
+        fill.color = fog(mix(0xFFFF3020.toInt(), 0xFFFFD0A0.toInt(), pulse - 0.5f), t)
+        c.drawCircle(px, py, 0.18f * s * pulse, fill)
     }
 
-    private fun drawPickup(c: Canvas, e: Entity) {
+    private fun drawPickup(c: Canvas, e: Entity, g: Game) {
         val z = max((e.z0 + e.z1) * 0.5f, near)
-        val t = fogT(z) * 0.7f
+        val t = fogT(z) * 0.6f
         val s = scaleAt(z)
-        val px = sx(e.cx, z); val py = sy(e.cy, z)
-        val color = if (e.kind == Kind.PICKUP_SHIELD) SHIELD else WEAPON
-        val r = 0.6f * s
-        val spin = abs(cos(e.phase * 3f)) * 0.8f + 0.2f
+        val bob = sin(e.phase * 3f) * 0.2f
+        val px = sx(e.cx, z); val py = sy(e.cy + bob, z)
+        val shield = e.kind == Kind.PICKUP_SHIELD
+        val color = if (shield) SHIELD else WEAPON
+        val r = 0.55f * s
 
-        fill.color = withAlpha(fog(color, t), 0.22f + 0.1f * sin(e.phase * 8f))
-        c.drawCircle(px, py, r * 1.9f, fill)
+        // soft glow + expanding ring
+        fill.color = withAlpha(fog(color, t), 0.25f)
+        c.drawCircle(px, py, r * 2f, fill)
+        val ring = (e.phase * 1.4f) % 1f
+        line.color = withAlpha(fog(color, t), 1f - ring)
+        line.strokeWidth = max(dp(1.5f), 0.08f * s)
+        c.drawCircle(px, py, r * (1.1f + ring * 1.3f), line)
 
-        path.reset()
-        path.moveTo(px, py - r * 1.25f)
-        path.lineTo(px + r * spin, py)
-        path.lineTo(px, py + r * 1.25f)
-        path.lineTo(px - r * spin, py)
-        path.close()
+        // orb with highlight
         fill.color = fog(color, t)
-        c.drawPath(path, fill)
-        line.color = fog(0xFFFFFFFF.toInt(), t)
-        line.strokeWidth = max(dp(1f), 0.07f * s)
-        c.drawPath(path, line)
+        c.drawCircle(px, py, r, fill)
+        fill.color = withAlpha(0xFFFFFFFF.toInt(), 0.55f * (1f - t))
+        c.drawCircle(px - r * 0.3f, py - r * 0.3f, r * 0.3f, fill)
 
-        // symbol: a plus for shield energy, a chevron for weapons
+        // symbol: plus for shield energy, double chevron for laser upgrade
+        line.color = fog(0xFF06202A.toInt(), t)
         line.strokeWidth = max(dp(1.5f), 0.12f * s)
-        if (e.kind == Kind.PICKUP_SHIELD) {
-            c.drawLine(px - r * 0.35f * spin, py, px + r * 0.35f * spin, py, line)
-            c.drawLine(px, py - r * 0.4f, px, py + r * 0.4f, line)
+        if (shield) {
+            c.drawLine(px - r * 0.45f, py, px + r * 0.45f, py, line)
+            c.drawLine(px, py - r * 0.45f, px, py + r * 0.45f, line)
         } else {
-            c.drawLine(px - r * 0.35f * spin, py + r * 0.2f, px, py - r * 0.25f, line)
-            c.drawLine(px, py - r * 0.25f, px + r * 0.35f * spin, py + r * 0.2f, line)
+            for (k in 0..1) {
+                val oy = r * (0.05f + k * 0.35f) - r * 0.2f
+                c.drawLine(px - r * 0.42f, py + oy + r * 0.2f, px, py + oy - r * 0.15f, line)
+                c.drawLine(px, py + oy - r * 0.15f, px + r * 0.42f, py + oy + r * 0.2f, line)
+            }
+        }
+
+        // name tag as it gets close
+        if (z < 110f && g.state == Game.State.PLAYING) {
+            val ts = (0.42f * s).coerceIn(dp(9f), dp(18f))
+            text(c, if (shield) "SHIELD" else "LASER+", px, py - r * 2.2f, ts, withAlpha(fog(color, t), 0.95f))
         }
     }
 
@@ -561,35 +663,52 @@ class Renderer(private val density: Float) {
     }
 
     private fun drawTitle(c: Canvas, g: Game) {
-        dim(c, 0.45f)
-        val ts = max(dp(12f), h / 26f)
-        text(c, "TRENCH RUN", w / 2f, h * 0.2f, ts * 2.6f, 0xFFFFD27A.toInt())
+        dim(c, 0.5f)
+        val ts = max(dp(11f), h / 28f)
+        text(c, "TRENCH RUN", w / 2f, h * 0.17f, ts * 2.6f, 0xFFFFD27A.toInt())
         val lines = arrayOf(
             "TILT LEFT / RIGHT ........ steer",
             if (g.invertPitch) "TILT FORWARD / BACK ...... climb / dive"
             else "TILT FORWARD / BACK ...... dive / climb",
             "HOLD LEFT SIDE ........... fire lasers",
-            "HOLD RIGHT SIDE .......... shield (uses energy)",
-            "Fly through CYAN cells for energy,",
-            "ORANGE cores to upgrade your lasers."
+            "HOLD RIGHT SIDE .......... shield (uses energy)"
         )
-        var y = h * 0.33f
-        for (l in lines) { text(c, l, w / 2f, y, ts * 0.78f, 0xFFE6ECF5.toInt()); y += ts * 1.15f }
+        var y = h * 0.29f
+        for (l in lines) { text(c, l, w / 2f, y, ts * 0.78f, 0xFFE6ECF5.toInt()); y += ts * 1.1f }
 
-        // pitch toggle button
-        val label = if (g.invertPitch) "PITCH: FORWARD = CLIMB  (tap to swap)" else "PITCH: FORWARD = DIVE  (tap to swap)"
-        txt.textSize = ts * 0.75f
-        val tw = txt.measureText(label)
-        val bx = w / 2f
-        val byy = y + ts * 0.6f
-        toggleRect.set(bx - tw / 2f - dp(14f), byy - ts, bx + tw / 2f + dp(14f), byy + ts * 0.5f)
+        // legend: what is good and what is dangerous
+        y += ts * 0.3f
+        val r = ts * 0.45f
+        val col1 = w * 0.2f; val col2 = w * 0.5f; val col3 = w * 0.78f
+        fill.color = SHIELD; c.drawCircle(col1 - r * 2.2f, y - r * 0.6f, r, fill)
+        text(c, "SHIELD +", col1 + r, y, ts * 0.72f, SHIELD, Paint.Align.LEFT)
+        fill.color = WEAPON; c.drawCircle(col2 - r * 2.2f, y - r * 0.6f, r, fill)
+        text(c, "LASER UPGRADE", col2 + r - ts * 1.6f, y, ts * 0.72f, WEAPON, Paint.Align.LEFT)
+        fill.color = HAZ_RED; c.drawRect(col3 - r * 3.2f, y - r * 1.6f, col3 - r * 1.2f, y + r * 0.4f, fill)
+        text(c, "RED = DANGER", col3 - r * 0.6f, y, ts * 0.72f, HAZ_RED, Paint.Align.LEFT)
+        y += ts * 1.5f
+
+        // toggles
+        txt.textSize = ts * 0.72f
+        val pitchLabel = if (g.invertPitch) "PITCH: FORWARD = CLIMB" else "PITCH: FORWARD = DIVE"
+        val soundLabel = if (g.soundOn) "SOUND: ON" else "SOUND: OFF"
+        val pw = txt.measureText(pitchLabel) + dp(28f)
+        val sw = txt.measureText(soundLabel) + dp(28f)
+        val gap = dp(16f)
+        val left = w / 2f - (pw + sw + gap) / 2f
+        toggleRect.set(left, y - ts, left + pw, y + ts * 0.5f)
+        soundRect.set(left + pw + gap, y - ts, left + pw + gap + sw, y + ts * 0.5f)
         line.color = HUD; line.strokeWidth = dp(1.5f)
         c.drawRoundRect(toggleRect, dp(8f), dp(8f), line)
-        text(c, label, bx, byy, ts * 0.75f, HUD)
+        c.drawRoundRect(soundRect, dp(8f), dp(8f), line)
+        text(c, pitchLabel, toggleRect.centerX(), y, ts * 0.72f, HUD)
+        text(c, soundLabel, soundRect.centerX(), y, ts * 0.72f, HUD)
+        text(c, "(tap a button to change it)", w / 2f, y + ts * 1.2f, ts * 0.6f, 0x99FFFFFF.toInt())
 
         val blink = 0.6f + 0.4f * sin(g.time * 4f)
-        text(c, "Hold your phone the way you want to play, then tap to launch", w / 2f, h * 0.88f, ts * 0.8f, withAlpha(0xFFFFFFFF.toInt(), blink))
-        if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w / 2f, h * 0.95f, ts * 0.7f, 0xBBFFD27A.toInt())
+        text(c, "Hold your phone the way you want to play, then tap to launch", w / 2f, h * 0.87f, ts * 0.8f, withAlpha(0xFFFFFFFF.toInt(), blink))
+        if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w / 2f, h * 0.94f, ts * 0.7f, 0xBBFFD27A.toInt())
+        text(c, buildLabel, w - dp(10f), h - dp(8f), ts * 0.55f, 0x88FFFFFF.toInt(), Paint.Align.RIGHT)
     }
 
     private fun drawPaused(c: Canvas) {

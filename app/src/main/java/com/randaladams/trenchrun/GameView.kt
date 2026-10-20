@@ -37,7 +37,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     private val game = Game(context.getSharedPreferences("trenchrun", Context.MODE_PRIVATE))
-    private val renderer = Renderer(resources.displayMetrics.density)
+    private val renderer = Renderer(resources.displayMetrics.density, "build ${BuildConfig.VERSION_NAME}")
+    private val sound = Sound(context).also { it.enabled = game.soundOn }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val tiltSensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
@@ -81,7 +82,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             game.shieldHeld = false
         }
         stopLoop()
+        sound.stopLoops()
     }
+
+    fun release() = sound.release()
 
     /** Back button: pause a running game, otherwise let the activity close. */
     fun onBack(): Boolean {
@@ -114,7 +118,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             val dt = ((now - last) / 1_000_000_000f).coerceIn(0.0005f, 1f / 30f)
             last = now
 
-            synchronized(game) { game.update(dt) }
+            synchronized(game) {
+                game.update(dt)
+                for (s in game.sfx) sound.play(s)
+                game.sfx.clear()
+                val flying = game.state == Game.State.PLAYING && !game.paused
+                sound.updateLoops(flying || game.state == Game.State.TITLE, game.difficulty, flying && game.shieldUp)
+            }
 
             val canvas = try { holder.lockHardwareCanvas() } catch (_: Exception) { null }
             if (canvas == null) {
@@ -198,6 +208,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 Game.State.TITLE -> {
                     if (renderer.toggleRect.contains(x, y)) {
                         game.invertPitch = !game.invertPitch
+                    } else if (renderer.soundRect.contains(x, y)) {
+                        game.soundOn = !game.soundOn
+                        sound.enabled = game.soundOn
+                        if (!game.soundOn) sound.stopLoops()
                     } else {
                         calibrate()
                         game.start()

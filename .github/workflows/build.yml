@@ -13,14 +13,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Build debug APK
         run: |
@@ -28,22 +28,28 @@ jobs:
           ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: trench-run-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # Publishes the newest build as the "prototype" pre-release so it can be
-      # downloaded straight to a phone from the repo's Releases page.
-      - name: Publish prototype release
+      # Keeps ONE release ("prototype") and replaces its APK on every build, so these links never change:
+      #   https://github.com/randaladams/Trench-Run/releases/latest/download/TrenchRun.apk
+      #   https://github.com/randaladams/Trench-Run/releases/download/prototype/TrenchRun.apk
+      - name: Publish APK to the permanent download link
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk TrenchRun.apk
-          gh release delete prototype --yes --cleanup-tag || true
-          gh release create prototype TrenchRun.apk \
-            --prerelease \
-            --target "${{ github.sha }}" \
-            --title "Trench Run prototype (build ${{ github.run_number }})" \
-            --notes "Latest automatic build from main. Download TrenchRun.apk on your Android phone and open it to install (allow installs from your browser when asked)."
+          TITLE="Trench Run (build ${{ github.run_number }})"
+          NOTES="Latest build from main (build ${{ github.run_number }}, commit ${GITHUB_SHA::7}). Open TrenchRun.apk on your Android phone to install or update."
+          git tag -f prototype
+          git push -f origin refs/tags/prototype
+          if gh release view prototype > /dev/null 2>&1; then
+            gh release upload prototype TrenchRun.apk --clobber
+            gh release edit prototype --title "$TITLE" --notes "$NOTES" --prerelease=false --latest
+          else
+            gh release create prototype TrenchRun.apk --title "$TITLE" --notes "$NOTES" --latest
+          fi

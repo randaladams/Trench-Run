@@ -1,6 +1,7 @@
 package com.randaladams.trenchrun
 
 import android.app.Activity
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -19,6 +20,7 @@ class MainActivity : Activity() {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+        volumeControlStream = AudioManager.STREAM_MUSIC
         gameView = GameView(this)
         setContentView(gameView)
         hideSystemUi()
@@ -33,6 +35,11 @@ class MainActivity : Activity() {
     override fun onPause() {
         gameView.pause()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        gameView.release()
+        super.onDestroy()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
