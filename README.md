@@ -21,10 +21,12 @@ Open that link on your Android phone, then open the downloaded file to install. 
 - **Color code: red and striped = danger. Glowing cyan and green orbs = good.**
 - **Shield energy** is your lifeline. A hit costs 40 energy, or 15 if your shield is raised. Raising it drains energy while held. Energy rebuilds slowly as you fly (0.5/s, growing a little with distance) and +4 for every drone you shoot down.
 - **If you hit something with no shield energy left, the run is over.**
-- **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot).
+- **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot). **Violet hourglass orbs** slow the trench to 60% speed for 10 seconds.
+- **Wall turrets** appear now and then. Their muzzle glows and whines as you approach, then fires one red laser at where you are. Move to dodge it, or raise your shield (25 damage unshielded, 8 shielded). You can hear which wall it's on.
+- Below 20 shield energy an alarm sounds and the screen edge pulses red.
 - Red drones can be shot down for 100 points each. The crosshair turns red when one is in your line of fire.
-- Speed and obstacle density increase the farther you go.
-- Back button pauses. Sound can be turned off on the title screen; the phone volume buttons adjust it.
+- Speed and obstacle density increase the farther you go, and speed keeps creeping up after that.
+- Pause and sound on/off buttons sit at the bottom center of the screen. The back button also pauses, and the phone volume buttons adjust sound.
 
 Emulator testing: arrow keys steer, Space fires, Shift or Z raises the shield, Enter launches.
 

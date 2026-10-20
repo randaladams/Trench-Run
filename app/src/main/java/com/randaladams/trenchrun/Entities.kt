@@ -13,8 +13,10 @@ enum class Kind {
     SIDE_BLOCK,    // wall jutting in from one side: dodge sideways
     PILLAR,        // column standing in the trench: dodge left or right
     DRONE,         // floating target: shoot it or dodge it
+    TURRET,        // wall-mounted gun: glows, then fires a laser at where you are
     PICKUP_SHIELD, // fly through for shield energy
-    PICKUP_WEAPON  // fly through for a laser upgrade
+    PICKUP_WEAPON, // fly through for a laser upgrade
+    PICKUP_SLOW    // fly through to slow the trench down for a while
 }
 
 class Entity(
@@ -30,8 +32,10 @@ class Entity(
     var phase = 0f
     var baseX = 0f
     var driftAmp = 0f
+    var fired = false        // turrets fire once
+    var fireZ = 60f          // distance ahead at which a turret fires
 
-    val isPickup get() = kind == Kind.PICKUP_SHIELD || kind == Kind.PICKUP_WEAPON
+    val isPickup get() = kind == Kind.PICKUP_SHIELD || kind == Kind.PICKUP_WEAPON || kind == Kind.PICKUP_SLOW
     val destructible get() = kind == Kind.DRONE
     val cx get() = (x0 + x1) * 0.5f
     val cy get() = (y0 + y1) * 0.5f

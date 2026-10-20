@@ -36,17 +36,25 @@ class Game(private val prefs: SharedPreferences) {
         const val KILL_ENERGY = 4f       // energy gained for each drone destroyed
         const val PICKUP_ENERGY = 25f
         const val BASE_SPEED = 30f
-        const val SPEED_GAIN = 36f       // added speed at full difficulty
-        const val DIFFICULTY_DISTANCE = 6000f
+        const val SPEED_GAIN = 36f       // added speed by the time difficulty maxes out
+        const val DIFFICULTY_DISTANCE = 4500f
+        const val LATE_SPEED_PER_1000 = 3f  // speed keeps creeping up after that...
+        const val MAX_SPEED = 92f           // ...up to this cap
+        const val SLOW_FACTOR = 0.6f     // slow-mo pickup: speed multiplier
+        const val SLOW_DURATION = 10f    // seconds
+        const val LASER_DAMAGE = 25f     // enemy laser, shield down
+        const val LASER_SHIELDED = 8f    // enemy laser, shield up
+        const val CRITICAL_ENERGY = 20f  // alarm sounds below this
         const val BOLT_SPEED = 160f
     }
 
     enum class State { TITLE, PLAYING, GAME_OVER }
-    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, SHIELD_UP, START }
+    enum class Sfx { LASER, EXPLODE, HIT, SHIELD_HIT, PICKUP, UPGRADE, GAME_OVER, SHIELD_UP, START, ENEMY_FIRE, TURRET_CHARGE, SLOW }
 
-    /** Sound events raised this frame; GameView drains and plays them. */
+    /** Sound events raised this frame (with stereo pan -1..1); GameView drains and plays them. */
     val sfx = ArrayList<Sfx>()
-    private fun play(s: Sfx) { if (!sfx.contains(s)) sfx.add(s) }
+    val sfxPan = ArrayList<Float>()
+    private fun play(s: Sfx, pan: Float = 0f) { if (!sfx.contains(s)) { sfx.add(s); sfxPan.add(pan) } }
 
     var state = State.TITLE
         private set
@@ -91,6 +99,10 @@ class Game(private val prefs: SharedPreferences) {
 
     val entities = ArrayList<Entity>()
     val bolts = ArrayList<Bolt>()
+    val enemyBolts = ArrayList<Bolt>()
+    var slowTime = 0f
+    var slowMul = 1f
+    val critical get() = state == State.PLAYING && energy < CRITICAL_ENERGY
     val particles = ArrayList<Particle>()
 
     private var fireCooldown = 0f
@@ -105,7 +117,8 @@ class Game(private val prefs: SharedPreferences) {
     // ------------------------------------------------------------------ flow
 
     fun start() {
-        entities.clear(); bolts.clear(); particles.clear()
+        entities.clear(); bolts.clear(); enemyBolts.clear(); particles.clear()
+        slowTime = 0f; slowMul = 1f
         px = 0f; py = Y_MID; vx = 0f; vy = 0f
         distance = 0f; speed = BASE_SPEED
         energy = MAX_ENERGY; weaponLevel = 1; shieldUp = false
@@ -174,6 +187,8 @@ class Game(private val prefs: SharedPreferences) {
         speed = max(0f, speed - 35f * dt)
         moveWorld(speed * dt, dt)
         moveBolts(dt, speed * dt)
+        for (b in enemyBolts) { b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt }
+        enemyBolts.removeAll { it.z < CAM_Z + 1f }
     }
 
     private fun updatePlaying(dt: Float) {
@@ -187,7 +202,12 @@ class Game(private val prefs: SharedPreferences) {
         px = nx; py = ny
 
         // ---- forward motion
-        speed = BASE_SPEED + SPEED_GAIN * difficulty
+        val late = max(0f, distance - DIFFICULTY_DISTANCE) / 1000f * LATE_SPEED_PER_1000
+        val baseSpeed = min(MAX_SPEED, BASE_SPEED + SPEED_GAIN * difficulty + late)
+        slowTime = max(0f, slowTime - dt)
+        val slowTarget = if (slowTime > 0f) SLOW_FACTOR else 1f
+        slowMul += (slowTarget - slowMul) * min(1f, dt * 2.5f)
+        speed = baseSpeed * slowMul
         val dz = speed * dt
         distance += dz
         moveWorld(dz, dt)
@@ -209,10 +229,12 @@ class Game(private val prefs: SharedPreferences) {
         fireCooldown -= dt
         if (firing && fireCooldown <= 0f) fire()
         moveBolts(dt, dz)
+        updateTurrets(dt)
+        if (state != State.PLAYING) return
 
         // ---- collisions with the ship
         for (e in entities) {
-            if (!e.alive || e.spent) continue
+            if (!e.alive || e.spent || e.kind == Kind.TURRET) continue
             if (e.x0 < px + HX && e.x1 > px - HX &&
                 e.y0 < py + HY && e.y1 > py - HY &&
                 e.z0 < HZ && e.z1 > -HZ
@@ -224,7 +246,7 @@ class Game(private val prefs: SharedPreferences) {
                         explode(e.cx, e.cy, e.z0, 0xFFFF6030.toInt(), 30, 9f)
                         play(Sfx.EXPLODE)
                     }
-                    if (state == State.PLAYING) onHit()
+                    if (state == State.PLAYING) onHit(HIT_DAMAGE, SHIELDED_DAMAGE)
                 }
                 if (state != State.PLAYING) return
             }
@@ -232,6 +254,44 @@ class Game(private val prefs: SharedPreferences) {
 
         score = (distance * 0.5f).toInt() + kills * 100 + bonus
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
+    }
+
+    /** Wall turrets glow as they approach, then fire one laser at where the ship is right now. */
+    private fun updateTurrets(dt: Float) {
+        for (e in entities) {
+            if (e.kind != Kind.TURRET || !e.alive || e.fired) continue
+            if (e.z0 < e.fireZ + 35f && e.phase == 0f) {
+                e.phase = 1f
+                play(Sfx.TURRET_CHARGE, if (e.cx < 0f) -0.8f else 0.8f)
+            }
+            if (e.z0 <= e.fireZ) {
+                e.fired = true
+                val mx = if (e.cx < 0f) e.x1 else e.x0
+                val my = e.cy
+                val mz = e.z0 + 0.7f
+                val travel = 1.05f - 0.25f * difficulty     // seconds until it reaches you
+                enemyBolts.add(Bolt(mx, my, mz, (px - mx) / travel, (py - my) / travel, (0f - mz) / travel, 1))
+                play(Sfx.ENEMY_FIRE, if (e.cx < 0f) -0.8f else 0.8f)
+                explode(mx, my, mz, 0xFFFF6040.toInt(), 8, 3f)
+            }
+        }
+
+        for (b in enemyBolts) {
+            if (!b.alive) continue
+            b.prevZ = b.z
+            b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt
+            // crossing the ship's plane: did it connect?
+            if (b.prevZ >= -HZ && b.z <= HZ &&
+                b.x > px - HX - 0.2f && b.x < px + HX + 0.2f &&
+                b.y > py - HY - 0.25f && b.y < py + HY + 0.25f
+            ) {
+                b.alive = false
+                onHit(LASER_DAMAGE, LASER_SHIELDED)
+                if (state != State.PLAYING) return
+            }
+            if (b.z < CAM_Z + 1f) b.alive = false
+        }
+        enemyBolts.removeAll { !it.alive }
     }
 
     private fun moveWorld(dz: Float, dt: Float) {
@@ -250,13 +310,13 @@ class Game(private val prefs: SharedPreferences) {
         for (p in particles) p.z -= dz
     }
 
-    private fun onHit() {
+    private fun onHit(damage: Float, shieldedDamage: Float) {
         if (invuln > 0f) return
         if (energy <= 0.5f) {           // no shield power left: ship is destroyed
             gameOver()
             return
         }
-        energy = max(0f, energy - if (shieldUp) SHIELDED_DAMAGE else HIT_DAMAGE)
+        energy = max(0f, energy - if (shieldUp) shieldedDamage else damage)
         invuln = 0.8f
         if (shieldUp) shieldFlash = 1f else hitFlash = 1f
         play(if (shieldUp) Sfx.SHIELD_HIT else Sfx.HIT)
@@ -268,7 +328,13 @@ class Game(private val prefs: SharedPreferences) {
 
     private fun collect(e: Entity) {
         e.alive = false
-        if (e.kind == Kind.PICKUP_SHIELD) {
+        if (e.kind == Kind.PICKUP_SLOW) {
+            slowTime = SLOW_DURATION
+            bonus += 50
+            showMessage("SLOW-MO ${SLOW_DURATION.toInt()}s", 2f)
+            play(Sfx.SLOW)
+            explode(e.cx, e.cy, e.z0, 0xFFC08CFF.toInt(), 18, 5f)
+        } else if (e.kind == Kind.PICKUP_SHIELD) {
             energy = min(MAX_ENERGY, energy + PICKUP_ENERGY)
             bonus += 50
             showMessage("SHIELD +${PICKUP_ENERGY.toInt()}")
@@ -319,7 +385,7 @@ class Game(private val prefs: SharedPreferences) {
             b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt
             if (b.z > FAR) { b.alive = false; continue }
             for (e in entities) {
-                if (!e.alive || e.isPickup) continue
+                if (!e.alive || e.isPickup || e.kind == Kind.TURRET) continue
                 // swept test: bolt travelled prevZ..z while the object came toward us by worldDz
                 if (b.z >= e.z0 && b.prevZ <= e.z1 + worldDz &&
                     b.x > e.x0 - 0.15f && b.x < e.x1 + 0.15f &&
@@ -387,6 +453,7 @@ class Game(private val prefs: SharedPreferences) {
             val reaction = 0.8f - 0.4f * difficulty + rng.nextFloat() * 0.25f
             val gap = max(18f, speed * reaction)
             maybeSpawnPickup(z + depth + gap * 0.5f)
+            maybeSpawnTurret(z, depth + gap)
             nextSpawnAt += depth + gap
         }
     }
@@ -462,13 +529,28 @@ class Game(private val prefs: SharedPreferences) {
         }
     }
 
+    /** Occasional wall turret: rare at first, a bit more common as difficulty rises. */
+    private fun maybeSpawnTurret(z: Float, span: Float) {
+        if (distance < 300f) return
+        if (rng.nextFloat() > 0.10f + 0.14f * difficulty) return
+        val left = rng.nextBoolean()
+        val y = rand(2.5f, 8f)
+        val tz = z + rand(0f, span * 0.6f)
+        val e = if (left) addBox(Kind.TURRET, -HALF_W, -HALF_W + 0.7f, y - 0.6f, y + 0.6f, tz, 1.4f)
+        else addBox(Kind.TURRET, HALF_W - 0.7f, HALF_W, y - 0.6f, y + 0.6f, tz, 1.4f)
+        e.fireZ = rand(50f, 70f)
+        e.phase = 0f
+    }
+
     private fun maybeSpawnPickup(z: Float) {
         val shieldChance = 0.10f + if (energy < 40f) 0.12f else 0f
         val weaponChance = if (weaponLevel < 4) 0.06f else 0.02f
+        val slowChance = if (slowTime > 0f) 0f else 0.03f + 0.06f * difficulty
         val r = rng.nextFloat()
         val kind = when {
             r < shieldChance -> Kind.PICKUP_SHIELD
             r < shieldChance + weaponChance -> Kind.PICKUP_WEAPON
+            r < shieldChance + weaponChance + slowChance -> Kind.PICKUP_SLOW
             else -> return
         }
         val x = rand(-4f, 4f)

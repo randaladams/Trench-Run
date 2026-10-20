@@ -35,6 +35,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         private const val DRONE = 0xFF7A1410.toInt()
         const val SHIELD = 0xFF40E0FF.toInt()               // good: cyan
         const val WEAPON = 0xFF7CFF4A.toInt()               // good: green
+        const val SLOW = 0xFFC08CFF.toInt()                 // good: violet
         private const val HUD = 0xFF9FF5C8.toInt()
         private const val DANGER = 0xFFFF4A4A.toInt()
     }
@@ -56,6 +57,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     /** Hit areas of the title-screen toggles (read by GameView). */
     val toggleRect = RectF()
     val soundRect = RectF()
+    /** In-game buttons, bottom center (read by GameView). */
+    val pauseRect = RectF()
+    val soundBtnRect = RectF()
 
     private val wallTex = Textures.walls(4)
     private val floorTex = Textures.floors(2)
@@ -179,7 +183,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         sorted.sortWith(byDepth)
         for (e in sorted) if (e.z1 >= 0f) drawEntity(c, e, g)
         for (b in g.bolts) drawBolt(c, b)
+        for (b in g.enemyBolts) if (b.z >= 0f) drawEnemyBolt(c, b)
         if (g.state != Game.State.GAME_OVER) drawShip(c, g)
+        for (b in g.enemyBolts) if (b.z < 0f) drawEnemyBolt(c, b)
         for (e in sorted) if (e.z1 < 0f) drawEntity(c, e, g)
         drawParticles(c, g)
 
@@ -189,6 +195,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
                 drawCrosshair(c, g)
                 drawHud(c, g)
                 if (g.paused) drawPaused(c)
+                drawButtons(c, g)
             }
             Game.State.GAME_OVER -> { drawHud(c, g); drawGameOver(c, g) }
         }
@@ -310,7 +317,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     private fun drawEntity(c: Canvas, e: Entity, g: Game) {
         val blink = ((g.time * 3f + e.z0 * 0.05f).toInt() % 2 == 0)
         when (e.kind) {
-            Kind.PICKUP_SHIELD, Kind.PICKUP_WEAPON -> drawPickup(c, e, g)
+            Kind.PICKUP_SHIELD, Kind.PICKUP_WEAPON, Kind.PICKUP_SLOW -> drawPickup(c, e, g)
+            Kind.TURRET -> drawTurret(c, e, g)
             Kind.DRONE -> drawDrone(c, e, g)
             Kind.BRIDGE -> if (box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) {
                 stripes(c, e.x0, e.x1, e.y0 + 0.2f, e.y1 - 0.2f, e.z0)
@@ -420,7 +428,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val bob = sin(e.phase * 3f) * 0.2f
         val px = sx(e.cx, z); val py = sy(e.cy + bob, z)
         val shield = e.kind == Kind.PICKUP_SHIELD
-        val color = if (shield) SHIELD else WEAPON
+        val slow = e.kind == Kind.PICKUP_SLOW
+        val color = when (e.kind) { Kind.PICKUP_SHIELD -> SHIELD; Kind.PICKUP_SLOW -> SLOW; else -> WEAPON }
         val r = 0.55f * s
 
         // soft glow + expanding ring
@@ -443,6 +452,11 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         if (shield) {
             c.drawLine(px - r * 0.45f, py, px + r * 0.45f, py, line)
             c.drawLine(px, py - r * 0.45f, px, py + r * 0.45f, line)
+        } else if (slow) {   // hourglass
+            val q = r * 0.42f
+            path.reset()
+            path.moveTo(px - q, py - q); path.lineTo(px + q, py - q); path.lineTo(px - q, py + q); path.lineTo(px + q, py + q); path.close()
+            c.drawPath(path, line)
         } else {
             for (k in 0..1) {
                 val oy = r * (0.05f + k * 0.35f) - r * 0.2f
@@ -454,7 +468,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         // name tag as it gets close
         if (z < 110f && g.state == Game.State.PLAYING) {
             val ts = (0.42f * s).coerceIn(dp(9f), dp(18f))
-            text(c, if (shield) "SHIELD" else "LASER+", px, py - r * 2.2f, ts, withAlpha(fog(color, t), 0.95f))
+            text(c, if (shield) "SHIELD" else if (slow) "SLOW-MO" else "LASER+", px, py - r * 2.2f, ts, withAlpha(fog(color, t), 0.95f))
         }
     }
 
@@ -467,15 +481,68 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val x1 = sx(b.x, zh); val y1 = sy(b.y, zh)
         val x2 = sx(tx, zt); val y2 = sy(ty, zt)
         val wdt = max(dp(2f), 0.22f * scaleAt(zh))
-        line.color = 0x66FF2A2A
+        line.color = 0x664CFF6A
         line.strokeWidth = wdt * 3f
         c.drawLine(x1, y1, x2, y2, line)
-        line.color = 0xFFFF5A4A.toInt()
+        line.color = 0xFF5CFF7A.toInt()
         line.strokeWidth = wdt
         c.drawLine(x1, y1, x2, y2, line)
-        line.color = 0xFFFFE0D8.toInt()
+        line.color = 0xFFE0FFE6.toInt()
         line.strokeWidth = wdt * 0.4f
         c.drawLine(x1, y1, x2, y2, line)
+    }
+
+    /** Enemy laser: a red plasma bolt with a trail pointing back at the turret that fired it. */
+    private fun drawEnemyBolt(c: Canvas, b: Bolt) {
+        if (b.z <= near + 0.3f) return
+        val speed = kotlin.math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+        val len = 4f / speed
+        val tz = max(b.z - b.vz * len, near + 0.1f)
+        val k = (b.z - tz) / max(0.001f, -b.vz * len) * len
+        val tx = b.x - b.vx * k; val ty = b.y - b.vy * k
+        val hx = sx(b.x, b.z); val hy = sy(b.y, b.z)
+        val s = scaleAt(b.z)
+        val t = fogT(b.z) * 0.5f
+        val wdt = max(dp(2.5f), 0.22f * s)
+        line.color = withAlpha(fog(0xFFFF2A10.toInt(), t), 0.45f)
+        line.strokeWidth = wdt * 3f
+        c.drawLine(hx, hy, sx(tx, tz), sy(ty, tz), line)
+        line.color = fog(0xFFFF5030.toInt(), t)
+        line.strokeWidth = wdt
+        c.drawLine(hx, hy, sx(tx, tz), sy(ty, tz), line)
+        fill.color = withAlpha(fog(0xFFFF4020.toInt(), t), 0.4f)
+        c.drawCircle(hx, hy, max(dp(5f), 0.6f * s), fill)
+        fill.color = 0xFFFFE0C0.toInt()
+        c.drawCircle(hx, hy, max(dp(2.5f), 0.22f * s), fill)
+    }
+
+    /** Wall gun: housing on the wall with a muzzle that glows brighter as it charges. */
+    private fun drawTurret(c: Canvas, e: Entity, g: Game) {
+        if (!box(c, e.x0, e.x1, e.y0, e.y1, e.z0, e.z1, HAZ_METAL, HAZ_RED)) return
+        val z = max(e.z0 + 0.7f, near + 0.1f)
+        if (z >= e.z1) return
+        val t = fogT(z) * 0.5f
+        val s = scaleAt(z)
+        val mx = if (e.cx < 0f) e.x1 else e.x0
+        val px = sx(mx, z); val py = sy(e.cy, z)
+        val charge = if (e.fired) 0f else ((e.fireZ + 35f - e.z0) / 35f).coerceIn(0f, 1f)
+        val flicker = if (charge > 0.6f) (0.75f + 0.25f * sin(g.time * 40f)) else 1f
+        // barrel
+        fill.color = fog(0xFF202228.toInt(), t)
+        c.drawCircle(px, py, 0.42f * s, fill)
+        line.color = fog(HAZ_RED, t)
+        line.strokeWidth = max(dp(1.5f), 0.07f * s)
+        c.drawCircle(px, py, 0.42f * s, line)
+        // charging glow
+        if (charge > 0f) {
+            fill.color = withAlpha(fog(0xFFFF3018.toInt(), t), (0.2f + 0.5f * charge) * flicker)
+            c.drawCircle(px, py, (0.6f + 1.2f * charge) * s, fill)
+            fill.color = fog(mix(0xFFFF4020.toInt(), 0xFFFFF0D0.toInt(), charge), t)
+            c.drawCircle(px, py, 0.3f * s * (0.4f + 0.6f * charge) * flicker, fill)
+        } else {
+            fill.color = fog(if (e.fired) 0xFF401010.toInt() else 0xFF801818.toInt(), t)
+            c.drawCircle(px, py, 0.18f * s, fill)
+        }
     }
 
     private fun drawParticles(c: Canvas, g: Game) {
@@ -622,6 +689,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         c.drawRect(rect, line)
 
         text(c, "LASER MK ${g.weaponName()}", pad, by + barH + ts * 1.2f, ts * 0.8f, WEAPON, Paint.Align.LEFT)
+        if (g.slowTime > 0f) {
+            val sy0 = by + barH + ts * 1.7f
+            text(c, "SLOW-MO %.1fs".format(g.slowTime), pad, sy0 + ts * 0.7f, ts * 0.8f, SLOW, Paint.Align.LEFT)
+            rect.set(pad, sy0 + ts * 0.95f, pad + barW * 0.6f * (g.slowTime / Game.SLOW_DURATION), sy0 + ts * 0.95f + dp(5f))
+            fill.color = SLOW
+            c.drawRect(rect, fill)
+        }
 
         // score
         text(c, "%,d".format(g.score), w - pad, pad + ts, ts * 1.2f, 0xFFFFFFFF.toInt(), Paint.Align.RIGHT)
@@ -632,6 +706,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         // warning when the next hit is fatal
         if (empty && (g.time * 3f).toInt() % 2 == 0) {
             text(c, "SHIELD DEPLETED - NEXT HIT IS FATAL", w / 2f, h * 0.2f, ts * 0.9f, DANGER)
+        } else if (!empty && g.critical && (g.time * 2.5f).toInt() % 2 == 0) {
+            text(c, "SHIELD CRITICAL", w / 2f, h * 0.2f, ts * 0.9f, DANGER)
+        }
+        if (g.critical) {   // pulsing red edge while the alarm sounds
+            line.color = withAlpha(DANGER, 0.25f + 0.25f * sin(g.time * 8f))
+            line.strokeWidth = dp(10f)
+            c.drawRect(0f, 0f, w, h, line)
         }
 
         // floating messages
@@ -662,6 +743,50 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         c.drawRect(0f, 0f, w, h, fill)
     }
 
+    /** Pause and sound buttons at the bottom center of the screen. */
+    private fun drawButtons(c: Canvas, g: Game) {
+        val size = dp(46f)
+        val gap = dp(12f)
+        val bottom = h - dp(14f)
+        pauseRect.set(w / 2f - size - gap / 2f, bottom - size, w / 2f - gap / 2f, bottom)
+        soundBtnRect.set(w / 2f + gap / 2f, bottom - size, w / 2f + gap / 2f + size, bottom)
+
+        for (rc in arrayOf(pauseRect, soundBtnRect)) {
+            fill.color = 0x66000000
+            c.drawRoundRect(rc, dp(10f), dp(10f), fill)
+            line.color = 0xAAFFFFFF.toInt(); line.strokeWidth = dp(1.5f)
+            c.drawRoundRect(rc, dp(10f), dp(10f), line)
+        }
+        fill.color = 0xEEFFFFFF.toInt()
+        val pcx = pauseRect.centerX(); val pcy = pauseRect.centerY(); val q = size * 0.22f
+        if (g.paused) {   // play triangle
+            path.reset()
+            path.moveTo(pcx - q * 0.8f, pcy - q); path.lineTo(pcx + q, pcy); path.lineTo(pcx - q * 0.8f, pcy + q); path.close()
+            c.drawPath(path, fill)
+        } else {          // pause bars
+            c.drawRect(pcx - q, pcy - q, pcx - q * 0.3f, pcy + q, fill)
+            c.drawRect(pcx + q * 0.3f, pcy - q, pcx + q, pcy + q, fill)
+        }
+        // speaker
+        val scx = soundBtnRect.centerX() - size * 0.08f; val scy = soundBtnRect.centerY()
+        path.reset()
+        path.moveTo(scx - q, scy - q * 0.45f); path.lineTo(scx - q * 0.4f, scy - q * 0.45f)
+        path.lineTo(scx + q * 0.25f, scy - q); path.lineTo(scx + q * 0.25f, scy + q)
+        path.lineTo(scx - q * 0.4f, scy + q * 0.45f); path.lineTo(scx - q, scy + q * 0.45f); path.close()
+        c.drawPath(path, fill)
+        line.color = 0xEEFFFFFF.toInt(); line.strokeWidth = dp(2f)
+        if (g.soundOn) {
+            rect.set(scx - q * 0.2f, scy - q * 0.7f, scx + q * 0.9f, scy + q * 0.7f)
+            c.drawArc(rect, -45f, 90f, false, line)
+            rect.set(scx - q * 0.6f, scy - q * 1.15f, scx + q * 1.35f, scy + q * 1.15f)
+            c.drawArc(rect, -45f, 90f, false, line)
+        } else {
+            line.color = DANGER
+            c.drawLine(scx + q * 0.55f, scy - q * 0.5f, scx + q * 1.35f, scy + q * 0.5f, line)
+            c.drawLine(scx + q * 0.55f, scy + q * 0.5f, scx + q * 1.35f, scy - q * 0.5f, line)
+        }
+    }
+
     private fun drawTitle(c: Canvas, g: Game) {
         dim(c, 0.5f)
         val ts = max(dp(11f), h / 28f)
@@ -679,13 +804,18 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         // legend: what is good and what is dangerous
         y += ts * 0.3f
         val r = ts * 0.45f
-        val col1 = w * 0.2f; val col2 = w * 0.5f; val col3 = w * 0.78f
-        fill.color = SHIELD; c.drawCircle(col1 - r * 2.2f, y - r * 0.6f, r, fill)
-        text(c, "SHIELD +", col1 + r, y, ts * 0.72f, SHIELD, Paint.Align.LEFT)
-        fill.color = WEAPON; c.drawCircle(col2 - r * 2.2f, y - r * 0.6f, r, fill)
-        text(c, "LASER UPGRADE", col2 + r - ts * 1.6f, y, ts * 0.72f, WEAPON, Paint.Align.LEFT)
-        fill.color = HAZ_RED; c.drawRect(col3 - r * 3.2f, y - r * 1.6f, col3 - r * 1.2f, y + r * 0.4f, fill)
-        text(c, "RED = DANGER", col3 - r * 0.6f, y, ts * 0.72f, HAZ_RED, Paint.Align.LEFT)
+        val items = arrayOf("SHIELD +" to SHIELD, "LASER UPGRADE" to WEAPON, "SLOW-MO" to SLOW, "RED = DANGER" to HAZ_RED)
+        txt.textSize = ts * 0.72f
+        val itemW = items.map { txt.measureText(it.first) + r * 3.2f }
+        val spacing = dp(22f)
+        var lx = w / 2f - (itemW.sum() + spacing * (items.size - 1)) / 2f
+        for ((i, it) in items.withIndex()) {
+            fill.color = it.second
+            if (i == items.size - 1) c.drawRect(lx, y - r * 1.6f, lx + r * 2f, y + r * 0.4f, fill)
+            else c.drawCircle(lx + r, y - r * 0.6f, r, fill)
+            text(c, it.first, lx + r * 3.2f, y, ts * 0.72f, it.second, Paint.Align.LEFT)
+            lx += itemW[i] + spacing
+        }
         y += ts * 1.5f
 
         // toggles
@@ -715,7 +845,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         dim(c, 0.55f)
         val ts = max(dp(12f), h / 26f)
         text(c, "PAUSED", w / 2f, h * 0.45f, ts * 2f, 0xFFFFFFFF.toInt())
-        text(c, "Tap to resume (tilt is re-centered)", w / 2f, h * 0.58f, ts * 0.8f, 0xCCFFFFFF.toInt())
+        text(c, "Tap anywhere to resume (tilt is re-centered)", w / 2f, h * 0.58f, ts * 0.8f, 0xCCFFFFFF.toInt())
     }
 
     private fun drawGameOver(c: Canvas, g: Game) {

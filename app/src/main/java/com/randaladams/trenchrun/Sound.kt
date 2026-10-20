@@ -35,6 +35,8 @@ class Sound(context: Context) {
     private val ids = java.util.concurrent.ConcurrentHashMap<Game.Sfx, Int>()
     @Volatile private var engineId = 0
     @Volatile private var shieldLoopId = 0
+    @Volatile private var alarmId = 0
+    private var alarmStream = 0
     private val loaded = HashSet<Int>()
 
     private var engineStream = 0
@@ -61,6 +63,10 @@ class Sound(context: Context) {
                 ids[Game.Sfx.GAME_OVER] = load("game_over", gameOver())
                 ids[Game.Sfx.SHIELD_UP] = load("shield_up", shieldUp())
                 ids[Game.Sfx.START] = load("start", start())
+                ids[Game.Sfx.ENEMY_FIRE] = load("enemy_fire", enemyFire())
+                ids[Game.Sfx.TURRET_CHARGE] = load("turret_charge", turretCharge())
+                ids[Game.Sfx.SLOW] = load("slow", slowMo())
+                alarmId = load("alarm", alarmLoop())
                 engineId = load("engine", engineLoop())
                 shieldLoopId = load("shield_loop", shieldLoop())
             } catch (_: Exception) {
@@ -71,21 +77,32 @@ class Sound(context: Context) {
 
     private fun ready(id: Int) = id != 0 && synchronized(loaded) { loaded.contains(id) }
 
-    fun play(s: Game.Sfx) {
+    fun play(s: Game.Sfx, pan: Float = 0f) {
         if (!enabled) return
         val id = ids[s] ?: return
         if (!ready(id)) return
         val vol = when (s) {
             Game.Sfx.LASER -> 0.35f
             Game.Sfx.SHIELD_UP -> 0.5f
+            Game.Sfx.TURRET_CHARGE -> 0.55f
             else -> 0.9f
         }
+        val p = pan.coerceIn(-1f, 1f)
+        val lv = vol * (if (p > 0f) 1f - p * 0.75f else 1f)
+        val rv = vol * (if (p < 0f) 1f + p * 0.75f else 1f)
         val rate = if (s == Game.Sfx.LASER || s == Game.Sfx.EXPLODE) 0.92f + Random.nextFloat() * 0.16f else 1f
-        pool.play(id, vol, vol, 1, 0, rate)
+        pool.play(id, lv, rv, 1, 0, rate)
     }
 
     /** Called every frame to keep the looping engine and shield hums in the right state. */
-    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean) {
+    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean, alarmOn: Boolean) {
+        val wantAlarm = enabled && alarmOn
+        if (wantAlarm && alarmStream == 0 && ready(alarmId)) {
+            alarmStream = pool.play(alarmId, 0.55f, 0.55f, 2, -1, 1f)
+        } else if (!wantAlarm && alarmStream != 0) {
+            pool.stop(alarmStream); alarmStream = 0
+        }
+
         val wantEngine = enabled && engineOn
         if (wantEngine && engineStream == 0 && ready(engineId)) {
             engineStream = pool.play(engineId, 0.32f, 0.32f, 0, -1, 1f)
@@ -103,6 +120,7 @@ class Sound(context: Context) {
     }
 
     fun stopLoops() {
+        if (alarmStream != 0) { pool.stop(alarmStream); alarmStream = 0 }
         if (engineStream != 0) { pool.stop(engineStream); engineStream = 0 }
         if (shieldStream != 0) { pool.stop(shieldStream); shieldStream = 0 }
     }
@@ -240,6 +258,65 @@ class Sound(context: Context) {
             val env = (p * 4f).coerceAtMost(1f) * (1f - p)
             out[i] = (lp * 1.8f + sin(ph) * 0.4f) * env
         }
+        return out
+    }
+
+    private fun enemyFire(): FloatArray {
+        val out = buf(0.35f)
+        var ph = 0f
+        for (i in out.indices) {
+            val p = i / out.size.toFloat()
+            ph += TWO_PI * (900f * exp(-p * 3f) + 120f) / RATE
+            val saw = (ph / TWO_PI) % 1f * 2f - 1f
+            out[i] = (saw * 0.6f + sin(ph * 2f) * 0.3f) * exp(-p * 4f)
+        }
+        noiseLp(out, 0.12f, 6000f, 1500f, 6f, 17, 0.5f)
+        return out
+    }
+
+    /** Rising whine that warns a turret is about to fire. */
+    private fun turretCharge(): FloatArray {
+        val out = buf(0.6f)
+        var ph = 0f
+        for (i in out.indices) {
+            val p = i / out.size.toFloat()
+            ph += TWO_PI * (300f + 1100f * p * p) / RATE
+            val trem = 0.6f + 0.4f * sin(TWO_PI * 18f * p * 0.6f)
+            out[i] = sin(ph) * trem * (p * 3f).coerceAtMost(1f) * (1f - p * 0.3f) * 0.7f
+        }
+        return out
+    }
+
+    /** Descending "time slowing down" sweep. */
+    private fun slowMo(): FloatArray {
+        val out = buf(0.9f)
+        var ph = 0f
+        var ph2 = 0f
+        for (i in out.indices) {
+            val p = i / out.size.toFloat()
+            ph += TWO_PI * (880f * exp(-p * 2f)) / RATE
+            ph2 += TWO_PI * (1320f * exp(-p * 2f)) / RATE
+            val wob = 0.7f + 0.3f * sin(TWO_PI * (12f - 9f * p) * p)
+            out[i] = (sin(ph) * 0.6f + sin(ph2) * 0.3f) * wob * (1f - p)
+        }
+        return out
+    }
+
+    /** Two-tone warning beeps, 1 second, silent at the edges so it loops cleanly. */
+    private fun alarmLoop(): FloatArray {
+        val out = buf(1f)
+        fun beep(start: Float, freq: Float) {
+            val a = (start * RATE).toInt()
+            val n = (0.18f * RATE).toInt()
+            for (j in 0 until n) {
+                val t = j / RATE.toFloat()
+                val env = (j / 200f).coerceAtMost(1f) * ((n - j) / 200f).coerceAtMost(1f)
+                val sq = if (sin(TWO_PI * freq * t) >= 0f) 1f else -1f
+                out[a + j] += (sq * 0.5f + sin(TWO_PI * freq * t) * 0.5f) * env
+            }
+        }
+        beep(0.05f, 880f)
+        beep(0.30f, 660f)
         return out
     }
 

@@ -120,10 +120,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
             synchronized(game) {
                 game.update(dt)
-                for (s in game.sfx) sound.play(s)
-                game.sfx.clear()
+                for (i in game.sfx.indices) sound.play(game.sfx[i], game.sfxPan[i])
+                game.sfx.clear(); game.sfxPan.clear()
                 val flying = game.state == Game.State.PLAYING && !game.paused
-                sound.updateLoops(flying || game.state == Game.State.TITLE, game.difficulty, flying && game.shieldUp)
+                sound.updateLoops(
+                    flying || game.state == Game.State.TITLE,
+                    (game.speed - Game.BASE_SPEED) / (Game.MAX_SPEED - Game.BASE_SPEED),
+                    flying && game.shieldUp,
+                    flying && game.critical
+                )
             }
 
             val canvas = try { holder.lockHardwareCanvas() } catch (_: Exception) { null }
@@ -182,10 +187,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     // ----------------------------------------------------------------- touch
 
+    /** Pointer ids that started on an on-screen button; they never count as fire/shield touches. */
+    private val buttonPointers = HashSet<Int>()
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val action = e.actionMasked
-        if (action == MotionEvent.ACTION_DOWN) handleTap(e.x, e.y)
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+            val i = e.actionIndex
+            val x = e.getX(i); val y = e.getY(i)
+            if (handleButton(x, y)) buttonPointers.add(e.getPointerId(i))
+            else if (action == MotionEvent.ACTION_DOWN) handleTap(x, y)
+        }
 
         // Work out which halves of the screen are currently held (multi-touch).
         var left = false
@@ -193,13 +206,39 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         if (action != MotionEvent.ACTION_CANCEL && action != MotionEvent.ACTION_UP) {
             val lifted = if (action == MotionEvent.ACTION_POINTER_UP) e.actionIndex else -1
             for (i in 0 until e.pointerCount) {
-                if (i == lifted) continue
+                if (i == lifted || buttonPointers.contains(e.getPointerId(i))) continue
                 if (e.getX(i) < width / 2f) left = true else right = true
             }
         }
-        game.firing = left
-        game.shieldHeld = right
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) buttonPointers.clear()
+        else if (action == MotionEvent.ACTION_POINTER_UP) buttonPointers.remove(e.getPointerId(e.actionIndex))
+
+        val paused = game.paused
+        game.firing = left && !paused
+        game.shieldHeld = right && !paused
         return true
+    }
+
+    /** In-game pause and sound buttons. Returns true if the touch landed on one. */
+    private fun handleButton(x: Float, y: Float): Boolean {
+        synchronized(game) {
+            if (game.state != Game.State.PLAYING) return false
+            if (renderer.pauseRect.contains(x, y)) {
+                if (game.paused) { calibrate(); game.paused = false } else game.pause()
+                return true
+            }
+            if (renderer.soundBtnRect.contains(x, y)) {
+                toggleSound()
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun toggleSound() {
+        game.soundOn = !game.soundOn
+        sound.enabled = game.soundOn
+        if (!game.soundOn) sound.stopLoops()
     }
 
     private fun handleTap(x: Float, y: Float) {
@@ -209,9 +248,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     if (renderer.toggleRect.contains(x, y)) {
                         game.invertPitch = !game.invertPitch
                     } else if (renderer.soundRect.contains(x, y)) {
-                        game.soundOn = !game.soundOn
-                        sound.enabled = game.soundOn
-                        if (!game.soundOn) sound.stopLoops()
+                        toggleSound()
                     } else {
                         calibrate()
                         game.start()
