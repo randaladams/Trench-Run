@@ -5,11 +5,11 @@ plugins {
 
 // ---- AdMob ids
 // Your real ids from admob.google.com (Apps > Trench Run > App settings / Ad units).
-// Leave empty until created; they are only used by the Play Store (release) build.
-val REAL_APP_ID = ""            // looks like ca-app-pub-1234567890123456~1234567890
-val REAL_BANNER_ID = ""         // looks like ca-app-pub-1234567890123456/1234567890
-val REAL_INTERSTITIAL_ID = ""   // looks like ca-app-pub-1234567890123456/1234567890
-val REAL_REWARDED_ID = ""       // looks like ca-app-pub-1234567890123456/1234567890
+// Only used by the Play Store (release) build. Test builds always use Google's test ids below.
+val REAL_APP_ID = "ca-app-pub-7909301840077799~2840317063"
+val REAL_BANNER_ID = "ca-app-pub-7909301840077799/4396941315"         // TrenchRun_Banner_Menus
+val REAL_INTERSTITIAL_ID = "ca-app-pub-7909301840077799/8974033469"   // TrenchRun_Interstitial_BetweenRuns
+val REAL_REWARDED_ID = "ca-app-pub-7909301840077799/1104563568"       // TrenchRun_Rewarded_Continue
 
 // Google's public test ids (always safe to show and tap).
 val TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
