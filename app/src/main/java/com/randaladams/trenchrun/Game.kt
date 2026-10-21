@@ -363,11 +363,14 @@ class Game(private val prefs: SharedPreferences) {
     }
 
     private fun updateTitle(dt: Float) {
-        // Attract mode: autopilot cruising down an empty trench.
+        // Menu flight: the ship follows the tilt controls (with a gentle bob) down an empty trench.
         speed = 34f
         distance += speed * dt
-        val nx = sin(time * 0.6f) * 3f
-        val ny = Y_MID + sin(time * 0.9f) * 2.5f
+        val tx = inputRoll.coerceIn(-1f, 1f) * X_LIMIT * 0.9f
+        val ty = Y_MID + inputPitch.coerceIn(-1f, 1f) * Y_RANGE * 0.9f + sin(time * 1.3f) * 0.15f
+        val k = min(1f, dt * 4f)
+        val nx = px + (tx - px) * k
+        val ny = (py + (ty - py) * k).coerceIn(Y_MIN, Y_MAX)
         vx = (nx - px) / dt; vy = (ny - py) / dt
         px = nx; py = ny
     }

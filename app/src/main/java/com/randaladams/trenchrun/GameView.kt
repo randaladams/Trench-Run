@@ -192,6 +192,12 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
         val rollDeg = atan2(-sxv, hypot(syv, az)) * RAD2DEG   // + = right edge down
         pitchDeg = atan2(az, syv) * RAD2DEG                   // 0 = upright, 90 = flat
 
+        // On the menus, "level" slowly follows however the phone is being held (about a 3 s drift),
+        // so the ship can be flown around without calibrating. START re-centers it exactly.
+        if (game.state == Game.State.TITLE || game.state == Game.State.SCORES) {
+            neutralPitch += (pitchDeg - neutralPitch) * 0.006f
+        }
+
         if (keyMode) return
         var pitchInput = -deadzone(pitchDeg - neutralPitch) / PITCH_RANGE
         if (game.invertPitch) pitchInput = -pitchInput

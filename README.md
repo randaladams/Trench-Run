@@ -22,6 +22,7 @@ New to the game? Tap **TUTORIAL** on the title screen for a guided training run 
 **Home screen:** a big **START** button launches a run. Below it: Tutorial, Zen mode on/off (Pro), Scores & Badges, pitch direction, sound, and **Exit game**. After a crash, choose **Fly again** or **Main menu**.
 
 - Hold the phone however is comfortable, then press START. That angle becomes "level".
+- On the home screen the ship already follows your tilt, so you can fly it around while you pick an option; "level" there slowly adjusts to how you're holding the phone.
 - **Color code: red and striped = danger. Glowing cyan and green orbs = good.**
 - **Shield energy** is your lifeline and works automatically. Each crash costs 50 energy. Energy rebuilds very slowly (0.3/s, paused while the tractor beam is on) and +2 for every drone you shoot down.
 - The **tractor beam** reaches about 75 m ahead and drags any orbs in range toward your ship, at 9 energy per second. Use it in short bursts to grab orbs you'd otherwise miss.
