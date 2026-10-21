@@ -87,4 +87,4 @@ Plain Kotlin + Android Canvas, no game engine or extra libraries.
 
 Build locally with Android Studio, or `./gradlew assembleDebug`.
 
-`store/` holds the Play Store assets: `play-icon-512.png` (the 512 x 512 store icon) and `icon-source.svg` (the source the launcher icons are rendered from).
+`store/` holds the Play Store assets: `play-icon-512.png` (the 512 x 512 store icon) and `icon-source-art.png` (the 1024 x 1024 artwork the store and launcher icons are cropped from; `icon-source.svg` is the previous icon).
