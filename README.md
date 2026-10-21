@@ -49,7 +49,7 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 |---|---|---|
 | Main game, tutorial, scoreboard | Yes | Yes |
 | Badges | 10 | All 24 |
-| Zen mode (steady speed, no turrets, crashes don't hurt) | No | Yes |
+| Zen mode (steady speed, no turrets, crashes don't hurt, lasers never overheat) | No | Yes |
 | One continue per run | After watching an ad | Free, no ad |
 | Ads | Banner on menu screens, full-screen ad between some runs | None |
 

@@ -698,7 +698,7 @@ class Game(private val prefs: SharedPreferences) {
         }
         fireCooldown = 1f / rate
         play(Sfx.LASER)
-        heat += HEAT_PER_SEC / rate
+        if (!zen) heat += HEAT_PER_SEC / rate   // Zen mode: lasers never overheat
         if (!zen) energy = max(0f, energy - FIRE_ENERGY_PER_SEC / rate)
         if (heat >= 100f) {
             heat = 100f
