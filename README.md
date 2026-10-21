@@ -53,6 +53,8 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 | One continue per run | After watching an ad | Free, no ad |
 | Ads | Banner on menu screens, full-screen ad between some runs | None |
 
+**Version 1.0.0 on Google Play is free only.** The store build hides Go Pro, Zen mode and the 14 Pro badges (shows 10 badges) until Google Play Billing is added in an update. Test builds (the download link) still show all of it so Pro can be tried. This is the `PRO_FOR_SALE` setting in `app/build.gradle.kts`.
+
 **Going Pro:** free players see a gold **GO PRO** button in the top-left of the home screen (also opened by tapping the locked Zen mode button or the PRO note on the Badges screen). It shows what Pro includes with **Unlock Pro**, **Restore purchase** and **Not now**. Google Play Billing isn't connected yet: in test builds Unlock Pro simply switches to Pro at no charge; in a store build it says purchases are coming.
 
 **Test switch:** open Scores & Badges and **press and hold the SCOREBOARD tab for 2 seconds** (you'll see "Keep holding..." and then feel a buzz). Tapping the **FREE EDITION** / **PRO EDITION** label on the home screen 5 times quickly also works. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
@@ -88,3 +90,9 @@ Plain Kotlin + Android Canvas, no game engine or extra libraries.
 Build locally with Android Studio, or `./gradlew assembleDebug`.
 
 `store/` holds the Play Store assets: `play-icon-512.png` (the 512 x 512 store icon) and `icon-source-art.png` (the 1024 x 1024 artwork the store and launcher icons are cropped from; `icon-source.svg` is the previous icon).
+
+## Releasing to Google Play
+
+1. One-time setup: add 4 repository secrets (Settings > Secrets and variables > Actions): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. These hold the Google Play **upload key**. The key file is never stored in this repository; keep your own backup.
+2. Actions tab > **Release for Google Play** > **Run workflow**. It builds `TrenchRun-<version>.aab` with the real AdMob ads, tags the code `v<version>`, and attaches the .aab to a GitHub Release (it does not replace the test download link).
+3. Upload the .aab in Play Console. For the next update, raise `versionName` in `app/build.gradle.kts` first (for example 1.0.1).

@@ -343,7 +343,7 @@ class Game(private val prefs: SharedPreferences) {
 
     /** "Trench Run Pro" offer screen, shown over the home screen or scoreboard. */
     var proOffer = false
-    fun openProOffer() { if (!book.pro && (state == State.TITLE || state == State.SCORES)) { proOffer = true; confirmClear = false } }
+    fun openProOffer() { if (BuildConfig.PRO_FOR_SALE && !book.pro && (state == State.TITLE || state == State.SCORES)) { proOffer = true; confirmClear = false } }
     fun showScores() { if (state == State.TITLE) { state = State.SCORES; scoresTab = 0; confirmClear = false } }
     fun backToTitle() { if (state == State.SCORES) { state = State.TITLE; confirmClear = false } }
     fun clearScores() { book.clearAll(); newHigh = false; confirmClear = false }

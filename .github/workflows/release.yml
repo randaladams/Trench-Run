@@ -1,0 +1,73 @@
+name: Release for Google Play
+
+# Actions tab -> "Release for Google Play" -> "Run workflow".
+# Builds the signed .aab (upload this to Play Console) with the real AdMob ads and the free-only
+# store edition, tags the code as v<versionName>, and attaches the .aab to a GitHub Release.
+# Before running again for an update, raise versionName in app/build.gradle.kts (e.g. 1.0.1).
+# versionCode is 100 + the build number, so it always goes up.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Read the version
+        id: v
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$V" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" > /dev/null; then
+            echo "::error::Version $V was already released. Raise versionName in app/build.gradle.kts first."; exit 1
+          fi
+          echo "### Trench Run $V (versionCode $((100 + GITHUB_RUN_NUMBER)))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Unpack the upload key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          [ -n "$KEYSTORE_BASE64" ] || { echo "::error::Secret KEYSTORE_BASE64 is missing (Settings > Secrets and variables > Actions)."; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+
+      - name: Build the signed .aab
+        env:
+          TR_KEYSTORE_FILE: ${{ runner.temp }}/upload.jks
+          TR_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          TR_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          TR_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease --stacktrace
+          mkdir -p out
+          cp app/build/outputs/bundle/release/app-release.aab "out/TrenchRun-${{ steps.v.outputs.name }}.aab"
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: TrenchRun-${{ steps.v.outputs.name }}-release
+          path: out/*
+
+      - name: Tag and create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.name }}
+        run: |
+          gh release create "v$V" out/* --target "$GITHUB_SHA" --latest=false \
+            --title "Trench Run $V (Google Play)" \
+            --notes "Upload TrenchRun-$V.aab to Google Play Console. versionCode $((100 + GITHUB_RUN_NUMBER))."

@@ -41,6 +41,17 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Google Play upload key. Only the Release workflow sets these (from GitHub Secrets);
+        // the key file and passwords are never stored in the repository.
+        create("release") {
+            val ks = System.getenv("TR_KEYSTORE_FILE")
+            if (ks != null) {
+                storeFile = file(ks)
+                storePassword = System.getenv("TR_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("TR_KEY_ALIAS")
+                keyPassword = System.getenv("TR_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -52,13 +63,18 @@ android {
             buildConfigField("String", "AD_BANNER_ID", "\"$TEST_BANNER_ID\"")
             buildConfigField("String", "AD_INTERSTITIAL_ID", "\"$TEST_INTERSTITIAL_ID\"")
             buildConfigField("String", "AD_REWARDED_ID", "\"$TEST_REWARDED_ID\"")
+            // Pro is offered in test builds (Unlock Pro switches it on free) so it can be tried
+            buildConfigField("boolean", "PRO_FOR_SALE", "true")
         }
         // The Play Store build uses your real AdMob ids (falls back to test ids until they're filled in).
         release {
             isMinifyEnabled = false
+            if (System.getenv("TR_KEYSTORE_FILE") != null) signingConfig = signingConfigs.getByName("release")
             manifestPlaceholders["admobAppId"] = REAL_APP_ID.ifEmpty { TEST_APP_ID }
             buildConfigField("String", "AD_BANNER_ID", "\"${REAL_BANNER_ID.ifEmpty { TEST_BANNER_ID }}\"")
             buildConfigField("String", "AD_INTERSTITIAL_ID", "\"${REAL_INTERSTITIAL_ID.ifEmpty { TEST_INTERSTITIAL_ID }}\"")
+            // 1.0.0 launches free only: no Go Pro, Zen or Pro badges until Google Play Billing is added
+            buildConfigField("boolean", "PRO_FOR_SALE", "false")
             buildConfigField("String", "AD_REWARDED_ID", "\"${REAL_REWARDED_ID.ifEmpty { TEST_REWARDED_ID }}\"")
         }
     }

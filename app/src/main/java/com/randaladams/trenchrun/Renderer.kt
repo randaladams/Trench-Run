@@ -87,8 +87,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val declineRect = RectF()
     val menuRect = RectF()
     private val dateFmt = java.text.SimpleDateFormat("MMM d  h:mm a", java.util.Locale.US)
+    /** Pro is only offered in test builds until Google Play Billing is added (store build = free only). */
+    private fun proShown(g: Game) = g.pro || BuildConfig.PRO_FOR_SALE
+    /** Badges this edition shows: all of them where Pro exists, only the free ones in the store build. */
+    private fun shownBadges(g: Game) = if (proShown(g)) ScoreBook.BADGES else ScoreBook.BADGES.filter { !it.pro }
+
     private fun versionLine(g: Game) =
-        "Trench Run ${if (g.pro) "PRO" else "FREE"}  version ${BuildConfig.VERSION_NAME}  (build ${BuildConfig.VERSION_CODE - 100})"
+        "Trench Run${if (!proShown(g)) "" else if (g.pro) " PRO" else " FREE"}  version ${BuildConfig.VERSION_NAME}  (build ${BuildConfig.VERSION_CODE - 100})"
 
     private val wallTex = Textures.walls(4)
     private val floorTex = Textures.floors(2)
@@ -909,15 +914,19 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val ts = max(dp(11f), h / 28f)
         val gold = 0xFFFFD27A.toInt()
         text(c, "TRENCH RUN", w / 2f, h * 0.13f, ts * 2.4f, gold)
-        val edLabel = if (g.pro) "PRO EDITION" else "FREE EDITION"
-        val edY = h * 0.13f + ts * 1.05f
-        text(c, edLabel, w / 2f, edY, ts * 0.62f, 0x99FFD27A.toInt())
-        txt.textSize = ts * 0.62f
-        val ew = txt.measureText(edLabel)
-        editionRect.set(w / 2f - ew / 2f - dp(16f), edY - ts * 0.9f, w / 2f + ew / 2f + dp(16f), edY + ts * 0.5f)
+        if (proShown(g)) {
+            val edLabel = if (g.pro) "PRO EDITION" else "FREE EDITION"
+            val edY = h * 0.13f + ts * 1.05f
+            text(c, edLabel, w / 2f, edY, ts * 0.62f, 0x99FFD27A.toInt())
+            txt.textSize = ts * 0.62f
+            val ew = txt.measureText(edLabel)
+            editionRect.set(w / 2f - ew / 2f - dp(16f), edY - ts * 0.9f, w / 2f + ew / 2f + dp(16f), edY + ts * 0.5f)
+        } else editionRect.setEmpty()
         if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w - dp(16f), dp(16f) + ts * 0.8f, ts * 0.7f, 0xCCFFD27A.toInt(), Paint.Align.RIGHT)
         // GO PRO button in the top-left corner (free edition only)
-        if (!g.pro) {
+        if (!proShown(g)) {
+            goProRect.setEmpty()
+        } else if (!g.pro) {
             goProRect.set(dp(16f), dp(14f), dp(16f) + w * 0.15f, dp(14f) + ts * 1.6f)
             bigButton(c, goProRect, "\u2605 GO PRO", gold, ts * 0.85f, 0.3f + 0.12f * sin(g.time * 3f))
         } else {
@@ -967,9 +976,13 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         y += ts * 0.6f
         val zenLabel = if (!g.pro) "ZEN MODE (PRO)" else if (zenOn) "ZEN MODE: ON" else "ZEN MODE: OFF"
         val zenCol = if (!g.pro) 0x88FFFFFF.toInt() else 0xFF9FE8D0.toInt()
-        val row1 = arrayOf(tutorialRect to ("TUTORIAL" to gold), zenRect to (zenLabel to zenCol), scoresRect to ("SCORES & BADGES" to gold))
+        val row1 = if (proShown(g))
+            arrayOf(tutorialRect to ("TUTORIAL" to gold), zenRect to (zenLabel to zenCol), scoresRect to ("SCORES & BADGES" to gold))
+        else arrayOf(tutorialRect to ("TUTORIAL" to gold), scoresRect to ("SCORES & BADGES" to gold))
+        if (row1.size < 3) zenRect.setEmpty()
+        val left1 = w / 2f - (bw * row1.size + gap * (row1.size - 1)) / 2f
         for ((i, item) in row1.withIndex()) {
-            item.first.set(left + i * (bw + gap), y, left + i * (bw + gap) + bw, y + bh)
+            item.first.set(left1 + i * (bw + gap), y, left1 + i * (bw + gap) + bw, y + bh)
             bigButton(c, item.first, item.second.first, item.second.second, ts * 1.0f, if (item.first === zenRect && zenOn) 0.35f else 0.18f)
         }
         y += bh + gap
@@ -1029,9 +1042,10 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val tw = w * 0.24f; val th = ts * 1.9f; val tgap = dp(14f)
         tabScoresRect.set(w / 2f - tw - tgap / 2f, pad, w / 2f - tgap / 2f, pad + th)
         tabBadgesRect.set(w / 2f + tgap / 2f, pad, w / 2f + tgap / 2f + tw, pad + th)
-        val badgeTotal = ScoreBook.BADGES.size
+        val shown = shownBadges(g)
+        val badgeTotal = shown.size
         bigButton(c, tabScoresRect, "SCOREBOARD", gold, ts * 0.95f, if (g.scoresTab == 0) 0.45f else 0.08f)
-        bigButton(c, tabBadgesRect, "BADGES  %d / %d".format(book.earned.size, badgeTotal), gold, ts * 0.95f, if (g.scoresTab == 1) 0.45f else 0.08f)
+        bigButton(c, tabBadgesRect, "BADGES  %d / %d".format(shown.count { book.earned.contains(it.id) }, badgeTotal), gold, ts * 0.95f, if (g.scoresTab == 1) 0.45f else 0.08f)
 
         val top = pad + th + ts * 1.4f
         // Bottom row: BACK in the left corner, CLEAR ALL in the right corner, banner ad (320 x 50 dp) centered
@@ -1135,8 +1149,9 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     private fun drawBadgeGrid(c: Canvas, g: Game, top: Float, bottom: Float, ts: Float, pad: Float) {
         val book = g.book
         val cols = 4
-        val rows = (ScoreBook.BADGES.size + cols - 1) / cols
-        val noteH = if (g.pro) 0f else ts * 1.1f
+        val badges = shownBadges(g)
+        val rows = (badges.size + cols - 1) / cols
+        val noteH = if (g.pro || !proShown(g)) 0f else ts * 1.1f
         val gapX = dp(10f); val gapY = dp(6f)
         val cellW = (w - pad * 2 - gapX * (cols - 1)) / cols
         val cellH = (bottom - top + ts * 0.6f - noteH - gapY * (rows - 1)) / rows
@@ -1146,7 +1161,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val nameSize = min(ts * 0.85f, cellH * 0.26f)
         val descSize = min(nameSize * 0.78f, cellH * 0.2f)
         val y0 = top - ts * 0.6f
-        for ((i, b) in ScoreBook.BADGES.withIndex()) {
+        for ((i, b) in badges.withIndex()) {
             val col = i % cols; val row = i / cols
             val x = pad + col * (cellW + gapX)
             val y = y0 + row * (cellH + gapY)
@@ -1177,7 +1192,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             text(c, l1, x + textX, ty, descSize, dc, Paint.Align.LEFT)
             if (l2.isNotEmpty()) text(c, l2, x + textX, ty + descSize * 1.2f, descSize, dc, Paint.Align.LEFT)
         }
-        if (!g.pro) {
+        if (!g.pro && proShown(g)) {
             val proCount = ScoreBook.BADGES.count { it.pro }
             val note = "$proCount badges marked PRO unlock with Trench Run Pro  -  tap to see Pro"
             text(c, note, w / 2f, bottom + ts * 0.6f, ts * 0.68f, 0xCCFFD27A.toInt())
