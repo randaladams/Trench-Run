@@ -48,7 +48,7 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
     }
 
     private val game = Game(context.getSharedPreferences("trenchrun", Context.MODE_PRIVATE))
-    private val renderer = Renderer(resources.displayMetrics.density, "build ${BuildConfig.VERSION_NAME}")
+    private val renderer = Renderer(resources.displayMetrics.density, "v${BuildConfig.VERSION_NAME}  build ${BuildConfig.VERSION_CODE - 100}")
     private val sound = Sound(context).also { it.enabled = game.soundOn }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager

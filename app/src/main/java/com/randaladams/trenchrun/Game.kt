@@ -13,8 +13,9 @@ class Game(private val prefs: SharedPreferences) {
     companion object {
         const val HALF_W = 6f          // trench half width
         const val TOP = 10f            // wall height
-        const val X_LIMIT = 5.35f      // how far the ship can go left/right (wingtips can touch the walls)
-        const val WALL_TOUCH_X = HALF_W - 0.95f   // ship center x where a wingtip meets a wall
+        const val WING_TIP = 1.42f     // wingtip distance from the ship's center (matches the drawn ship)
+        const val WALL_TOUCH_X = HALF_W - WING_TIP   // ship center x where a wingtip meets a wall
+        const val X_LIMIT = WALL_TOUCH_X + 0.27f     // how far the ship can go left/right (tips just bite into the wall)
         const val WALL_DRAIN = 4f      // energy per second when grinding a wingtip along a wall
         const val Y_MIN = 0.55f        // lowest the ship can go (belly on the floor)
         const val SCRAPE_Y = 1.0f      // below this the hull drags along the floor
@@ -520,9 +521,9 @@ class Game(private val prefs: SharedPreferences) {
             wallSparkAcc += dt * (70f + 110f * wall)
             while (wallSparkAcc >= 1f) {
                 wallSparkAcc -= 1f
-                // spray inward off the wall at the wingtip, up and down, trailing back
-                spark(side * (HALF_W - 0.05f), py + rand(-0.15f, 0.15f), rand(-0.2f, 0.4f),
-                    -side * rand(1.5f, 6f), rand(-4f, 6f), rand(-9f, 2f))
+                // spray off the wingtip fin where it grinds the wall: inward, up and down, trailing back
+                spark(side * (HALF_W - 0.04f), py + rand(-0.1f, 0.3f), rand(-0.12f, 0.12f),
+                    -side * rand(1f, 5f), rand(-3f, 6f), rand(-9f, 1f))
             }
             if (rng.nextFloat() < dt * 5f * wall) shake = max(shake, 0.15f)
         } else wallSparkAcc = 0f

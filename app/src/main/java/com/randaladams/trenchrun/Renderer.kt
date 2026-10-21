@@ -789,8 +789,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             text(c, "SHIELD CRITICAL", w / 2f, h * 0.2f, ts * 0.9f, DANGER)
         }
         if (g.wallScrape != 0f) {   // hot spot where the wingtip grinds the wall
-            val wx = sx(if (g.wallScrape < 0f) -Game.HALF_W else Game.HALF_W, 0.3f); val wy = sy(g.py, 0.3f)
-            val s = scaleAt(0.3f); val a = kotlin.math.abs(g.wallScrape)
+            val wx = sx(if (g.wallScrape < 0f) -Game.HALF_W else Game.HALF_W, 0f); val wy = sy(g.py + 0.1f, 0f)
+            val s = scaleAt(0f); val a = kotlin.math.abs(g.wallScrape)
             fill.color = withAlpha(0xFFFF9030.toInt(), 0.25f + 0.35f * a)
             c.drawCircle(wx, wy, s * 0.35f, fill)
             fill.color = withAlpha(0xFFFFF0C0.toInt(), 0.6f * a)

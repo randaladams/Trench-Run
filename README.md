@@ -1,12 +1,12 @@
 # Trench Run
 
-A tilt-controlled Android arcade prototype: fly a fighter down a long trench, dodging bridges, raised floors and walls while blasting drones.
+A tilt-controlled Android arcade game (version 1.0.0): fly a fighter down a long trench, dodging bridges, raised floors and walls while blasting drones.
 
 ## Download (always the newest build)
 
 **https://github.com/randaladams/Trench-Run/releases/latest/download/TrenchRun.apk**
 
-Open that link on your Android phone, then open the downloaded file to install. Allow installs from your browser if Android asks. This link never changes: every push to `main` rebuilds the game (see the **Actions** tab, about 2 minutes) and replaces the file behind it. New builds install over the old one, and the build number shows in the corner of the title screen.
+Open that link on your Android phone, then open the downloaded file to install. Allow installs from your browser if Android asks. This link never changes: every push to `main` rebuilds the game (see the **Actions** tab, about 2 minutes) and replaces the file behind it. New builds install over the old one, and the version and build number show in the corner of the title screen.
 
 ## How to play
 

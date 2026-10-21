@@ -29,7 +29,7 @@ android {
         // CI passes its run number so each build shows on the title screen and installs as an update
         val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
         versionCode = 100 + buildNumber
-        versionName = "0.2.$buildNumber"
+        versionName = "1.0.0"
     }
 
     // A fixed debug key is committed so every CI build installs over the previous one
