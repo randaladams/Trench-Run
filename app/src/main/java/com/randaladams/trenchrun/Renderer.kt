@@ -208,6 +208,16 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         for (b in g.bolts) if (b.alive) drawBolt(c, b)
         for (b in g.enemyBolts) if (b.z >= 0f) drawEnemyBolt(c, b)
         if (g.tractorOn) drawTractor(c, g)
+        if (g.scrape > 0f) {   // hot contact patch on the floor under the ship
+            val gx = sx(g.px, 0.3f); val gy = sy(0f, 0.3f); val s = scaleAt(0.3f)
+            val flick = 0.7f + 0.3f * sin(g.time * 50f)
+            fill.color = withAlpha(0xFFFF9030.toInt(), (0.25f + 0.35f * g.scrape) * flick)
+            rect.set(gx - s * 1.1f, gy - s * 0.18f, gx + s * 1.1f, gy + s * 0.18f)
+            c.drawOval(rect, fill)
+            fill.color = withAlpha(0xFFFFF0C0.toInt(), 0.5f * g.scrape * flick)
+            rect.set(gx - s * 0.5f, gy - s * 0.07f, gx + s * 0.5f, gy + s * 0.07f)
+            c.drawOval(rect, fill)
+        }
         if (g.state != Game.State.GAME_OVER) drawShip(c, g)
         for (b in g.enemyBolts) if (b.z < 0f) drawEnemyBolt(c, b)
         for (e in sorted) if (e.z1 < 0f) drawEntity(c, e, g)
@@ -765,6 +775,8 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         } else if (!empty && g.critical && (g.time * 2.5f).toInt() % 2 == 0) {
             text(c, "SHIELD CRITICAL", w / 2f, h * 0.2f, ts * 0.9f, DANGER)
         }
+        if (g.scrape > 0f && (g.time * 5f).toInt() % 2 == 0)
+            text(c, "HULL SCRAPING", w / 2f, h * 0.26f, ts * 0.8f, 0xFFFFA040.toInt())
         if (g.critical) {   // pulsing red edge while the alarm sounds
             line.color = withAlpha(DANGER, 0.25f + 0.25f * sin(g.time * 8f))
             line.strokeWidth = dp(10f)

@@ -14,7 +14,9 @@ class Game(private val prefs: SharedPreferences) {
         const val HALF_W = 6f          // trench half width
         const val TOP = 10f            // wall height
         const val X_LIMIT = 4.8f       // how far the ship can go left/right
-        const val Y_MIN = 1.0f
+        const val Y_MIN = 0.55f        // lowest the ship can go (belly on the floor)
+        const val SCRAPE_Y = 1.0f      // below this the hull drags along the floor
+        const val SCRAPE_DRAIN = 5f    // energy per second at the deepest scrape
         const val Y_MAX = 8.6f
         const val Y_MID = (Y_MIN + Y_MAX) / 2f
         const val Y_RANGE = (Y_MAX - Y_MIN) / 2f
@@ -82,6 +84,10 @@ class Game(private val prefs: SharedPreferences) {
     var vx = 0f; var vy = 0f
     var energy = MAX_ENERGY
     var tractorOn = false
+    /** 0 = not touching the floor, 1 = dragging as low as the ship can go. */
+    var scrape = 0f
+        private set
+    private var sparkAcc = 0f
     var heat = 0f              // laser heat 0..100
     var overheated = false
     var weaponLevel = 1
@@ -354,6 +360,7 @@ class Game(private val prefs: SharedPreferences) {
         shieldFlash = max(0f, shieldFlash - dt * 3f)
         shake = max(0f, shake - dt * 2.5f)
 
+        if (state != State.PLAYING) scrape = 0f
         when (state) {
             State.TITLE, State.SCORES -> updateTitle(dt)
             State.PLAYING -> updatePlaying(dt)
@@ -438,6 +445,7 @@ class Game(private val prefs: SharedPreferences) {
             play(Sfx.ALARM); play(Sfx.VOICE_DEPLETED)
         } else if (depletedWarned && energy > 5f) depletedWarned = false
         invuln = max(0f, invuln - dt)
+        updateScrape(dt)
 
         // ---- weapons
         fireCooldown -= dt
@@ -476,6 +484,24 @@ class Game(private val prefs: SharedPreferences) {
         if (energy <= 0.5f) hitZero = true
         checkBadges()
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
+    }
+
+    /** Flying too low drags the hull: small energy drain, sparks streaming behind, scraping sound. */
+    private fun updateScrape(dt: Float) {
+        scrape = ((SCRAPE_Y - py) / (SCRAPE_Y - Y_MIN)).coerceIn(0f, 1f)
+        if (scrape <= 0f) { sparkAcc = 0f; return }
+        if (!zen) energy = max(0f, energy - SCRAPE_DRAIN * (0.4f + 0.6f * scrape) * dt)
+        sparkAcc += dt * (45f + 90f * scrape)
+        while (sparkAcc >= 1f) {
+            sparkAcc -= 1f
+            val col = when (rng.nextInt(4)) { 0 -> 0xFFFFFFFF.toInt(); 1 -> 0xFFFFA030.toInt(); else -> 0xFFFFE08A.toInt() }
+            particles.add(Particle(
+                px + rand(-0.75f, 0.75f), 0.08f, rand(-0.4f, 0.5f),
+                rand(-3f, 3f), rand(0.8f, 3.5f + 3f * scrape), rand(-4f, 3f),
+                0.2f + rng.nextFloat() * 0.35f, col, 0.05f + rng.nextFloat() * 0.07f
+            ))
+        }
+        if (rng.nextFloat() < dt * 6f * scrape) shake = max(shake, 0.18f)
     }
 
     /** Wall turrets glow as they approach, then fire one laser at where the ship is right now. */

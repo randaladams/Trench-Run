@@ -43,6 +43,8 @@ class Sound(context: Context) {
 
     private var engineStream = 0
     private var shieldStream = 0
+    @Volatile private var scrapeId = 0
+    private var scrapeStream = 0
 
     @Volatile var enabled = true
 
@@ -91,6 +93,7 @@ class Sound(context: Context) {
                 ids[Game.Sfx.COOLED] = load("cooled", arpeggio(floatArrayOf(784f, 1175f), 0.07f, true))
                 engineId = load("engine", engineLoop())
                 shieldLoopId = load("shield_loop", shieldLoop())
+                scrapeId = load("scrape_loop", scrapeLoop())
             } catch (_: Exception) {
                 // Sound is optional; the game keeps running silently if anything fails.
             }
@@ -131,7 +134,18 @@ class Sound(context: Context) {
         }.start()
     }
 
-    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean) {
+    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean, scrape: Float = 0f) {
+        val wantScrape = enabled && scrape > 0f
+        if (wantScrape && scrapeStream == 0 && ready(scrapeId)) {
+            scrapeStream = pool.play(scrapeId, 0f, 0f, 1, -1, 1f)
+        } else if (!wantScrape && scrapeStream != 0) {
+            pool.stop(scrapeStream); scrapeStream = 0
+        }
+        if (scrapeStream != 0) {
+            val v = 0.35f + 0.6f * scrape
+            pool.setVolume(scrapeStream, v, v)
+            pool.setRate(scrapeStream, 0.85f + 0.35f * scrape)
+        }
 
         val wantEngine = enabled && engineOn
         if (wantEngine && engineStream == 0 && ready(engineId)) {
@@ -150,6 +164,7 @@ class Sound(context: Context) {
     }
 
     fun stopLoops() {
+        if (scrapeStream != 0) { pool.stop(scrapeStream); scrapeStream = 0 }
         if (engineStream != 0) { pool.stop(engineStream); engineStream = 0 }
         if (shieldStream != 0) { pool.stop(shieldStream); shieldStream = 0 }
     }
@@ -360,6 +375,26 @@ class Sound(context: Context) {
         }
         beep(0.05f, 880f)
         beep(0.30f, 660f)
+        return out
+    }
+
+    /** Metal grinding on metal: band-limited noise with random crackles and a rough screech. Loops (1 s). */
+    private fun scrapeLoop(): FloatArray {
+        val out = buf(1f)
+        val r = Random(77)
+        var lp = 0f; var hp = 0f; var prev = 0f
+        var crackle = 0f
+        for (i in out.indices) {
+            val t = i / RATE.toFloat()
+            val white = r.nextFloat() * 2f - 1f
+            lp += 0.35f * (white - lp)          // low-pass
+            hp = lp - prev; prev = lp           // then high-pass: a grinding band
+            if (r.nextFloat() < 0.004f) crackle = 1f
+            crackle *= 0.995f
+            val screech = sin(TWO_PI * 1870f * t + 3f * sin(TWO_PI * 7f * t)) * 0.12f
+            val grit = (r.nextFloat() * 2f - 1f) * crackle
+            out[i] = hp * 2.2f + grit * 0.6f + screech * (0.6f + 0.4f * sin(TWO_PI * 3f * t))
+        }
         return out
     }
 

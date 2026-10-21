@@ -140,7 +140,8 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                 sound.updateLoops(
                     flying || game.state == Game.State.TITLE,
                     (game.speed - Game.BASE_SPEED) / (Game.MAX_SPEED - Game.BASE_SPEED),
-                    flying && game.tractorOn
+                    flying && game.tractorOn,
+                    if (flying) game.scrape else 0f
                 )
             }
 
