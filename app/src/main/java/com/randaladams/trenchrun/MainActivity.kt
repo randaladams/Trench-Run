@@ -10,6 +10,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.window.OnBackInvokedDispatcher
 
 class MainActivity : Activity(), GameView.Host {
 
@@ -45,6 +46,14 @@ class MainActivity : Activity(), GameView.Host {
 
         ads = Ads(this, getSharedPreferences("trenchrun", Context.MODE_PRIVATE))
         ads.init(root)
+
+        // Android 13+: the Back button/gesture arrives here (Android 16 no longer calls onBackPressed).
+        // Back pauses a run or closes a screen; on the home screen it leaves the game.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT) {
+                if (!gameView.onBack()) finish()
+            }
+        }
     }
 
     override fun onResume() {
@@ -71,6 +80,7 @@ class MainActivity : Activity(), GameView.Host {
         if (hasFocus) hideSystemUi()
     }
 
+    // Android 12 and older
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (!gameView.onBack()) {

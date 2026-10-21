@@ -19,13 +19,13 @@ val TEST_REWARDED_ID = "ca-app-pub-3940256099942544/5224354917"
 
 android {
     namespace = "com.randaladams.trenchrun"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         // Play Store package name (permanent once published)
         applicationId = "com.adamselite.trenchrun"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         // CI passes its run number so each build shows on the title screen and installs as an update
         val buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInt()
         versionCode = 100 + buildNumber

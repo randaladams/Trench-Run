@@ -94,5 +94,5 @@ Build locally with Android Studio, or `./gradlew assembleDebug`.
 ## Releasing to Google Play
 
 1. One-time setup: add 4 repository secrets (Settings > Secrets and variables > Actions): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. These hold the Google Play **upload key**. The key file is never stored in this repository; keep your own backup.
-2. Actions tab > **Release for Google Play** > **Run workflow**. It builds `TrenchRun-<version>.aab` with the real AdMob ads, tags the code `v<version>`, and attaches the .aab to a GitHub Release (it does not replace the test download link).
-3. Upload the .aab in Play Console. For the next update, raise `versionName` in `app/build.gradle.kts` first (for example 1.0.1).
+2. Actions tab > **Release for Google Play** > **Run workflow**. It builds `TrenchRun-<version>.aab` with the real AdMob ads, tags the code `v<version>-<versionCode>`, and attaches the .aab to a GitHub Release (it does not replace the test download link).
+3. Upload the .aab in Play Console. Every run gets a new versionCode, so it can be re-run if Play rejects an upload. For the next public update, raise `versionName` in `app/build.gradle.kts` (for example 1.0.1).

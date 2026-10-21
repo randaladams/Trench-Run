@@ -2,8 +2,8 @@ name: Release for Google Play
 
 # Actions tab -> "Release for Google Play" -> "Run workflow".
 # Builds the signed .aab (upload this to Play Console) with the real AdMob ads and the free-only
-# store edition, tags the code as v<versionName>, and attaches the .aab to a GitHub Release.
-# Before running again for an update, raise versionName in app/build.gradle.kts (e.g. 1.0.1).
+# store edition, tags the code as v<versionName>-<versionCode>, and attaches the .aab to a GitHub Release.
+# For a new public update, raise versionName in app/build.gradle.kts (e.g. 1.0.1).
 # versionCode is 100 + the build number, so it always goes up.
 
 on:
@@ -30,9 +30,7 @@ jobs:
         run: |
           V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "name=$V" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v$V" > /dev/null; then
-            echo "::error::Version $V was already released. Raise versionName in app/build.gradle.kts first."; exit 1
-          fi
+          echo "code=$((100 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
           echo "### Trench Run $V (versionCode $((100 + GITHUB_RUN_NUMBER)))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Unpack the upload key
@@ -67,7 +65,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ steps.v.outputs.name }}
+          CODE: ${{ steps.v.outputs.code }}
         run: |
-          gh release create "v$V" out/* --target "$GITHUB_SHA" --latest=false \
-            --title "Trench Run $V (Google Play)" \
-            --notes "Upload TrenchRun-$V.aab to Google Play Console. versionCode $((100 + GITHUB_RUN_NUMBER))."
+          # one tag per build (v1.0.0-102), so the same version can be rebuilt if Play rejects an upload
+          gh release create "v$V-$CODE" out/* --target "$GITHUB_SHA" --latest=false \
+            --title "Trench Run $V build $CODE (Google Play)" \
+            --notes "Upload TrenchRun-$V.aab to Google Play Console. versionCode $CODE."
