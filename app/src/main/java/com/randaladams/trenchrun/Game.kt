@@ -1,6 +1,7 @@
 package com.randaladams.trenchrun
 
 import android.content.SharedPreferences
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -25,6 +26,8 @@ class Game(private val prefs: SharedPreferences) {
         const val Y_RANGE = (Y_MAX - Y_MIN) / 2f
         const val HX = 0.95f           // ship hitbox half extents
         const val HY = 0.4f
+        val WING_SAMPLES = floatArrayOf(1.1f, 1.26f, 1.42f)   // outer-wing test points (body box covers up to HX)
+        val SIDES = intArrayOf(-1, 1)
         const val HZ = 0.8f
         const val CAM_Z = -7f          // chase camera sits behind the ship
         const val FAR = 220f           // draw distance
@@ -474,9 +477,9 @@ class Game(private val prefs: SharedPreferences) {
         // ---- collisions with the ship
         for (e in entities) {
             if (!e.alive || e.spent || e.kind == Kind.TURRET) continue
-            if (e.x0 < px + HX && e.x1 > px - HX &&
-                e.y0 < py + HY && e.y1 > py - HY &&
-                e.z0 < HZ && e.z1 > -HZ
+            if (e.z0 < HZ && e.z1 > -HZ && (
+                    (e.x0 < px + HX && e.x1 > px - HX && e.y0 < py + HY && e.y1 > py - HY) ||
+                    (!e.isPickup && wingsTouch(e)))
             ) {
                 if (e.isPickup) collect(e) else {
                     e.spent = true
@@ -495,6 +498,26 @@ class Game(private val prefs: SharedPreferences) {
         if (energy <= 0.5f) hitZero = true
         checkBadges()
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
+    }
+
+    /**
+     * The drawn wings reach WING_TIP (1.42) from center, wider than the body box (HX 0.95),
+     * so obstacles are also tested against points along each outer wing and its tip fin.
+     * The points follow the ship's visual bank (same angle the Renderer uses).
+     */
+    private fun wingsTouch(e: Entity): Boolean {
+        val bank = Math.toRadians((vx * 2.4f).coerceIn(-38f, 38f).toDouble())
+        val c = cos(bank).toFloat(); val sn = sin(bank).toFloat()
+        for (d in WING_SAMPLES) {
+            for (side in SIDES) {
+                // right wing (side +1) dips when banking right; screen y is flipped vs world y
+                val wx = px + side * d * c
+                val wy = py - side * d * sn
+                val hy = if (d >= WING_TIP - 0.05f) 0.2f else 0.06f   // tip fins stand taller
+                if (e.x0 < wx + 0.06f && e.x1 > wx - 0.06f && e.y0 < wy + hy && e.y1 > wy - hy) return true
+            }
+        }
+        return false
     }
 
     private var wallSparkAcc = 0f
