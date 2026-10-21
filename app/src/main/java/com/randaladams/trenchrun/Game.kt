@@ -337,6 +337,10 @@ class Game(private val prefs: SharedPreferences) {
 
     /** 0 = scoreboard, 1 = badges */
     var scoresTab = 0
+
+    /** "Trench Run Pro" offer screen, shown over the home screen or scoreboard. */
+    var proOffer = false
+    fun openProOffer() { if (!book.pro && (state == State.TITLE || state == State.SCORES)) { proOffer = true; confirmClear = false } }
     fun showScores() { if (state == State.TITLE) { state = State.SCORES; scoresTab = 0; confirmClear = false } }
     fun backToTitle() { if (state == State.SCORES) { state = State.TITLE; confirmClear = false } }
     fun clearScores() { book.clearAll(); newHigh = false; confirmClear = false }
@@ -348,6 +352,7 @@ class Game(private val prefs: SharedPreferences) {
     /** Hidden tester switch on the scoreboard. */
     fun toggleEdition() {
         book.pro = !book.pro
+        proOffer = false
         showMessage(if (book.pro) "PRO EDITION ENABLED (TEST)" else "FREE EDITION ENABLED (TEST)", 2.5f)
         play(Sfx.UPGRADE)
     }

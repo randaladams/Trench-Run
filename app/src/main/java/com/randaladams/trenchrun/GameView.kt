@@ -101,6 +101,7 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
     /** Back button: pause a running game, otherwise let the activity close. */
     fun onBack(): Boolean {
         synchronized(game) {
+            if (game.proOffer) { game.proOffer = false; return true }
             if (game.state == Game.State.PLAYING && !game.paused) { game.pause(); return true }
             if (game.state == Game.State.SCORES) {
                 if (game.confirmClear) game.confirmClear = false else game.backToTitle()
@@ -301,13 +302,24 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
 
     private fun handleTap(x: Float, y: Float) {
         synchronized(game) {
+            if (game.proOffer) {   // the Pro offer screen sits on top of everything else
+                when {
+                    renderer.unlockRect.contains(x, y) -> unlockPro()
+                    renderer.restoreRect.contains(x, y) ->
+                        game.showMessage("Restoring purchases will work once the game is on Google Play", 2.5f)
+                    renderer.offerPanelRect.contains(x, y) -> Unit
+                    else -> game.proOffer = false   // NOT NOW, or a tap outside the panel
+                }
+                return
+            }
             when (game.state) {
                 Game.State.TITLE -> when {
+                    renderer.goProRect.contains(x, y) -> game.openProOffer()
                     renderer.startRect.contains(x, y) -> beginRun(zen = game.zenSelected && game.pro)
                     renderer.tutorialRect.contains(x, y) -> { calibrate(); game.start(asTutorial = true) }
                     renderer.zenRect.contains(x, y) -> {
                         if (game.pro) game.zenSelected = !game.zenSelected
-                        else game.showMessage("ZEN MODE IS PART OF TRENCH RUN PRO", 2.5f)
+                        else game.openProOffer()
                     }
                     renderer.scoresRect.contains(x, y) -> game.showScores()
                     renderer.toggleRect.contains(x, y) -> { game.invertPitch = !game.invertPitch }
@@ -332,6 +344,7 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                         if (renderer.confirmYesRect.contains(x, y)) game.clearScores()
                         else if (renderer.confirmNoRect.contains(x, y)) { game.confirmClear = false }
                     }
+                    renderer.proNoteRect.contains(x, y) -> game.openProOffer()
                     renderer.tabScoresRect.contains(x, y) -> { game.scoresTab = 0 }
                     renderer.tabBadgesRect.contains(x, y) -> { game.scoresTab = 1 }
                     renderer.backRect.contains(x, y) -> game.backToTitle()
@@ -347,6 +360,19 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                 }
             }
             Unit
+        }
+    }
+
+    /**
+     * "Unlock Pro" button. Google Play Billing isn't connected yet: in test builds this simply switches
+     * the game to Pro so it can be tried; in a store build it explains purchases are coming.
+     */
+    private fun unlockPro() {
+        if (BuildConfig.DEBUG) {
+            game.toggleEdition()
+            game.showMessage("PRO UNLOCKED (TEST BUILD - NO CHARGE)", 2.5f)
+        } else {
+            game.showMessage("Purchases will be available once the game is on Google Play", 2.5f)
         }
     }
 

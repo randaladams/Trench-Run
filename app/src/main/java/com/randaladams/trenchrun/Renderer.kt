@@ -65,6 +65,11 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val resumeRect = RectF()
     val endRect = RectF()
     val tutorialRect = RectF()
+    val goProRect = RectF()
+    val proNoteRect = RectF()
+    val unlockRect = RectF()
+    val restoreRect = RectF()
+    val offerPanelRect = RectF()
     val scoresRect = RectF()
     val backRect = RectF()
     val clearRect = RectF()
@@ -235,6 +240,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
             Game.State.GAME_OVER -> { drawHud(c, g); drawGameOver(c, g) }
             Game.State.SCORES -> drawScores(c, g)
         }
+        drawProOffer(c, g)
         drawBadgeToast(c, g)
     }
 
@@ -909,6 +915,14 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         val ew = txt.measureText(edLabel)
         editionRect.set(w / 2f - ew / 2f - dp(16f), edY - ts * 0.9f, w / 2f + ew / 2f + dp(16f), edY + ts * 0.5f)
         if (g.highScore > 0) text(c, "HIGH SCORE  %,d".format(g.highScore), w - dp(16f), dp(16f) + ts * 0.8f, ts * 0.7f, 0xCCFFD27A.toInt(), Paint.Align.RIGHT)
+        // GO PRO button in the top-left corner (free edition only)
+        if (!g.pro) {
+            goProRect.set(dp(16f), dp(14f), dp(16f) + w * 0.15f, dp(14f) + ts * 1.6f)
+            bigButton(c, goProRect, "\u2605 GO PRO", gold, ts * 0.85f, 0.3f + 0.12f * sin(g.time * 3f))
+        } else {
+            goProRect.setEmpty()
+            text(c, "\u2605 PRO", dp(18f), dp(16f) + ts * 0.8f, ts * 0.75f, gold, Paint.Align.LEFT)
+        }
 
         val lines = arrayOf(
             "TILT LEFT / RIGHT ........ steer",
@@ -1003,6 +1017,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     }
 
     private fun drawScores(c: Canvas, g: Game) {
+        proNoteRect.setEmpty()
         dim(c, 0.82f)
         val book = g.book
         val ts = max(dp(10f), h / 30f)
@@ -1163,8 +1178,12 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         }
         if (!g.pro) {
             val proCount = ScoreBook.BADGES.count { it.pro }
-            text(c, "$proCount badges marked PRO unlock with Trench Run Pro", w / 2f, bottom + ts * 0.6f, ts * 0.68f, 0x99FFD27A.toInt())
-        }
+            val note = "$proCount badges marked PRO unlock with Trench Run Pro  -  tap to see Pro"
+            text(c, note, w / 2f, bottom + ts * 0.6f, ts * 0.68f, 0xCCFFD27A.toInt())
+            txt.textSize = ts * 0.68f
+            val nw = txt.measureText(note)
+            proNoteRect.set(w / 2f - nw / 2f - dp(10f), bottom - ts * 0.3f, w / 2f + nw / 2f + dp(10f), bottom + ts * 1.1f)
+        } else proNoteRect.setEmpty()
     }
 
     /** "Continue?" screen with a countdown ring: one continue per run. */
@@ -1198,6 +1217,47 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         bigButton(c, continueRect, label, gold, ts * 0.85f, 0.3f + 0.1f * sin(g.time * 5f))
         bigButton(c, declineRect, "NO THANKS", HUD, ts * 0.85f, 0.12f)
         if (g.messageTime > 0f) text(c, g.message, w / 2f, top - ts * 0.4f, ts * 0.7f, withAlpha(DANGER, min(1f, g.messageTime * 2f)))
+    }
+
+    /** "Trench Run Pro" offer: what Pro includes, an Unlock button, Restore purchases and Not now. */
+    private fun drawProOffer(c: Canvas, g: Game) {
+        if (!g.proOffer) { unlockRect.setEmpty(); restoreRect.setEmpty(); offerPanelRect.setEmpty(); return }
+        val gold = 0xFFFFD27A.toInt()
+        val ts = max(dp(11f), h / 28f)
+        dim(c, 0.72f)
+        val pw = min(w * 0.62f, dp(620f)); val ph = min(h - bannerSpace(g) - dp(24f), ts * 13.5f)
+        val top = (h - bannerSpace(g) - ph) / 2f
+        offerPanelRect.set(w / 2f - pw / 2f, top, w / 2f + pw / 2f, top + ph)
+        fill.color = 0xF2121620.toInt(); c.drawRoundRect(offerPanelRect, dp(16f), dp(16f), fill)
+        line.color = gold; line.strokeWidth = dp(2.5f); c.drawRoundRect(offerPanelRect, dp(16f), dp(16f), line)
+
+        var y = top + ts * 1.7f
+        text(c, "TRENCH RUN PRO", w / 2f, y, ts * 1.5f, gold)
+        y += ts * 1.5f
+        val perks = arrayOf(
+            "No ads, ever",
+            "Zen mode: relaxed endless flight",
+            "All ${ScoreBook.BADGES.size} badges (${ScoreBook.BADGES.count { it.pro }} more to earn)",
+            "Continue after a crash without watching an ad"
+        )
+        val lx = offerPanelRect.left + pw * 0.14f
+        for (p in perks) {
+            fill.color = gold
+            c.drawCircle(lx, y - ts * 0.28f, ts * 0.18f, fill)
+            text(c, p, lx + ts * 0.7f, y, ts * 0.78f, 0xFFE6ECF5.toInt(), Paint.Align.LEFT)
+            y += ts * 1.25f
+        }
+        text(c, "One-time purchase  -  your scores and badges carry over", w / 2f, y + ts * 0.1f, ts * 0.6f, 0x99FFFFFF.toInt())
+
+        val bh = ts * 2f
+        val by = top + ph - bh - ts * 1.9f
+        unlockRect.set(w / 2f - pw * 0.32f, by, w / 2f + pw * 0.32f, by + bh)
+        bigButton(c, unlockRect, "UNLOCK PRO", gold, ts * 1.0f, 0.3f + 0.1f * sin(g.time * 4f))
+        val ly = top + ph - ts * 0.75f
+        text(c, "RESTORE PURCHASE", offerPanelRect.left + pw * 0.27f, ly, ts * 0.62f, 0xAAFFFFFF.toInt())
+        text(c, "NOT NOW", offerPanelRect.right - pw * 0.27f, ly, ts * 0.62f, 0xAAFFFFFF.toInt())
+        restoreRect.set(offerPanelRect.left + pw * 0.05f, ly - ts * 1.1f, offerPanelRect.left + pw * 0.49f, ly + ts * 0.5f)
+        if (g.messageTime > 0f) text(c, g.message, w / 2f, by - ts * 0.4f, ts * 0.62f, withAlpha(gold, min(1f, g.messageTime * 2f)))
     }
 
     /** "Badge earned" banner that slides in at the top. */

@@ -53,6 +53,8 @@ The game has a free edition and a Pro edition (planned as the paid Play Store ve
 | One continue per run | After watching an ad | Free, no ad |
 | Ads | Banner on menu screens, full-screen ad between some runs | None |
 
+**Going Pro:** free players see a gold **GO PRO** button in the top-left of the home screen (also opened by tapping the locked Zen mode button or the PRO note on the Badges screen). It shows what Pro includes with **Unlock Pro**, **Restore purchase** and **Not now**. Google Play Billing isn't connected yet: in test builds Unlock Pro simply switches to Pro at no charge; in a store build it says purchases are coming.
+
 **Test switch:** open Scores & Badges and **press and hold the SCOREBOARD tab for 2 seconds** (you'll see "Keep holding..." and then feel a buzz). Tapping the **FREE EDITION** / **PRO EDITION** label on the home screen 5 times quickly also works. It only works in debug builds (like the ones on the download link), so it won't exist in a store release. Before publishing, the Pro flag should be driven by a Google Play purchase instead.
 
 ## Ads (AdMob)
