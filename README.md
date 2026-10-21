@@ -30,7 +30,7 @@ New to the game? Tap **TUTORIAL** on the title screen for a guided training run 
 - **Cyan orbs** restore 25 shield energy. **Green orbs** upgrade your lasers (Mk I to IV: twin shots, faster fire, more damage, triple shot). **Violet hourglass orbs** slow the trench to 45% speed for 12 seconds and also permanently knock the speed ramp back a notch. Orbs appear on timers (shield about every 14 s, slow-mo about every 22 s, lasers about every 30 s), so flying faster doesn't earn you more of them.
 - **Wall turrets** appear now and then. Their muzzle glows and whines as you approach, then fires one red laser at where you are. Dodge it or shoot it down (+150 points). It does 30 damage if it hits. You can hear which wall it's on.
 - Firing costs shield energy: about 3 per second of continuous fire.
-- **Hull scraping:** fly too low and the ship drags along the floor, throwing sparks with a grinding sound and draining up to 5 shield energy per second. Climb a little to stop it.
+- **Hull scraping:** fly too low and the ship drags along the floor; fly too wide and a wingtip grinds along a wall. Either one throws sparkler-style spark streaks with a grinding sound (panned to the side you're touching) and drains a little shield energy (up to 5/s on the floor, 4/s on a wall). It never slows you down.
 - When shield energy drops below 25 you hear one warning beep and a spoken "Shield critical" (using the phone's text-to-speech voice), and the screen edge pulses red. At zero you hear "Shields down!"
 - **Laser heat:** firing builds heat (shown on the HEAT gauge under the shield bar). Holding fire fills it in about 4 seconds; then the lasers overheat and lock for about 3 seconds until they cool. Fire in bursts to stay below the limit.
 - Red drones can be shot down for 100 points each. The crosshair turns red when one is in your line of fire.
@@ -84,3 +84,5 @@ Plain Kotlin + Android Canvas, no game engine or extra libraries.
 | `Sound.kt` | Synthesized sound effects and engine/shield hum loops. |
 
 Build locally with Android Studio, or `./gradlew assembleDebug`.
+
+`store/` holds the Play Store assets: `play-icon-512.png` (the 512 x 512 store icon) and `icon-source.svg` (the source the launcher icons are rendered from).

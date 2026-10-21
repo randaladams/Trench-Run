@@ -134,7 +134,8 @@ class Sound(context: Context) {
         }.start()
     }
 
-    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean, scrape: Float = 0f) {
+    /** [scrape] 0..1 loudness of the grind, [pan] -1 (left) .. 1 (right). */
+    fun updateLoops(engineOn: Boolean, speedFactor: Float, shieldOn: Boolean, scrape: Float = 0f, pan: Float = 0f) {
         val wantScrape = enabled && scrape > 0f
         if (wantScrape && scrapeStream == 0 && ready(scrapeId)) {
             scrapeStream = pool.play(scrapeId, 0f, 0f, 1, -1, 1f)
@@ -142,8 +143,9 @@ class Sound(context: Context) {
             pool.stop(scrapeStream); scrapeStream = 0
         }
         if (scrapeStream != 0) {
-            val v = 0.35f + 0.6f * scrape
-            pool.setVolume(scrapeStream, v, v)
+            val v = 0.18f + 0.32f * scrape
+            val p = pan.coerceIn(-1f, 1f)
+            pool.setVolume(scrapeStream, v * (if (p > 0f) 1f - p * 0.7f else 1f), v * (if (p < 0f) 1f + p * 0.7f else 1f))
             pool.setRate(scrapeStream, 0.85f + 0.35f * scrape)
         }
 

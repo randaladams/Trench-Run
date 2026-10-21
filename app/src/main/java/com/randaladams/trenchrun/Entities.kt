@@ -54,8 +54,10 @@ class Bolt(
 
 class Particle(
     var x: Float, var y: Float, var z: Float,
-    val vx: Float, val vy: Float, val vz: Float,
-    val maxLife: Float, val color: Int, val size: Float
+    val vx: Float, var vy: Float, val vz: Float,
+    val maxLife: Float, val color: Int, val size: Float,
+    /** Sparkler-style spark: drawn as a thin motion streak and pulled down by gravity. */
+    val streak: Boolean = false
 ) {
     var life = maxLife
 }

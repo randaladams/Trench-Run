@@ -13,7 +13,9 @@ class Game(private val prefs: SharedPreferences) {
     companion object {
         const val HALF_W = 6f          // trench half width
         const val TOP = 10f            // wall height
-        const val X_LIMIT = 4.8f       // how far the ship can go left/right
+        const val X_LIMIT = 5.35f      // how far the ship can go left/right (wingtips can touch the walls)
+        const val WALL_TOUCH_X = HALF_W - 0.95f   // ship center x where a wingtip meets a wall
+        const val WALL_DRAIN = 4f      // energy per second when grinding a wingtip along a wall
         const val Y_MIN = 0.55f        // lowest the ship can go (belly on the floor)
         const val SCRAPE_Y = 1.0f      // below this the hull drags along the floor
         const val SCRAPE_DRAIN = 5f    // energy per second at the deepest scrape
@@ -86,6 +88,9 @@ class Game(private val prefs: SharedPreferences) {
     var tractorOn = false
     /** 0 = not touching the floor, 1 = dragging as low as the ship can go. */
     var scrape = 0f
+        private set
+    /** Wall contact: -1..0 = left wall, 0..1 = right wall (magnitude = how hard). */
+    var wallScrape = 0f
         private set
     private var sparkAcc = 0f
     var heat = 0f              // laser heat 0..100
@@ -360,7 +365,7 @@ class Game(private val prefs: SharedPreferences) {
         shieldFlash = max(0f, shieldFlash - dt * 3f)
         shake = max(0f, shake - dt * 2.5f)
 
-        if (state != State.PLAYING) scrape = 0f
+        if (state != State.PLAYING) { scrape = 0f; wallScrape = 0f }
         when (state) {
             State.TITLE, State.SCORES -> updateTitle(dt)
             State.PLAYING -> updatePlaying(dt)
@@ -486,22 +491,46 @@ class Game(private val prefs: SharedPreferences) {
         entities.removeAll { !it.alive || it.z1 < CAM_Z + 1f }
     }
 
-    /** Flying too low drags the hull: small energy drain, sparks streaming behind, scraping sound. */
+    private var wallSparkAcc = 0f
+
+    /**
+     * Flying too low drags the hull along the floor; flying too wide grinds a wingtip along a wall.
+     * Either one drains a little energy (no slowdown) and throws sparkler-style spark streaks.
+     */
     private fun updateScrape(dt: Float) {
         scrape = ((SCRAPE_Y - py) / (SCRAPE_Y - Y_MIN)).coerceIn(0f, 1f)
-        if (scrape <= 0f) { sparkAcc = 0f; return }
-        if (!zen) energy = max(0f, energy - SCRAPE_DRAIN * (0.4f + 0.6f * scrape) * dt)
-        sparkAcc += dt * (45f + 90f * scrape)
-        while (sparkAcc >= 1f) {
-            sparkAcc -= 1f
-            val col = when (rng.nextInt(4)) { 0 -> 0xFFFFFFFF.toInt(); 1 -> 0xFFFFA030.toInt(); else -> 0xFFFFE08A.toInt() }
-            particles.add(Particle(
-                px + rand(-0.75f, 0.75f), 0.08f, rand(-0.4f, 0.5f),
-                rand(-3f, 3f), rand(0.8f, 3.5f + 3f * scrape), rand(-4f, 3f),
-                0.2f + rng.nextFloat() * 0.35f, col, 0.05f + rng.nextFloat() * 0.07f
-            ))
-        }
-        if (rng.nextFloat() < dt * 6f * scrape) shake = max(shake, 0.18f)
+        val wall = ((kotlin.math.abs(px) - WALL_TOUCH_X) / (X_LIMIT - WALL_TOUCH_X)).coerceIn(0f, 1f)
+        wallScrape = if (px < 0f) -wall else wall
+
+        if (scrape > 0f) {
+            if (!zen) energy = max(0f, energy - SCRAPE_DRAIN * (0.4f + 0.6f * scrape) * dt)
+            sparkAcc += dt * (70f + 110f * scrape)
+            while (sparkAcc >= 1f) {
+                sparkAcc -= 1f
+                // spray backward and up off the belly, spreading out to the sides
+                spark(px + rand(-0.55f, 0.55f), 0.05f, rand(-0.2f, 0.4f),
+                    rand(-6f, 6f), rand(2f, 6f + 4f * scrape), rand(-9f, 2f))
+            }
+            if (rng.nextFloat() < dt * 6f * scrape) shake = max(shake, 0.18f)
+        } else sparkAcc = 0f
+
+        if (wall > 0f) {
+            if (!zen) energy = max(0f, energy - WALL_DRAIN * (0.4f + 0.6f * wall) * dt)
+            val side = if (px < 0f) -1f else 1f
+            wallSparkAcc += dt * (70f + 110f * wall)
+            while (wallSparkAcc >= 1f) {
+                wallSparkAcc -= 1f
+                // spray inward off the wall at the wingtip, up and down, trailing back
+                spark(side * (HALF_W - 0.05f), py + rand(-0.15f, 0.15f), rand(-0.2f, 0.4f),
+                    -side * rand(1.5f, 6f), rand(-4f, 6f), rand(-9f, 2f))
+            }
+            if (rng.nextFloat() < dt * 5f * wall) shake = max(shake, 0.15f)
+        } else wallSparkAcc = 0f
+    }
+
+    private fun spark(x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float) {
+        val col = when (rng.nextInt(5)) { 0, 1 -> 0xFFFFFFFF.toInt(); 2 -> 0xFFFFA030.toInt(); else -> 0xFFFFE08A.toInt() }
+        particles.add(Particle(x, y, z, vx, vy, vz, 0.12f + rng.nextFloat() * 0.25f, col, 0.03f, streak = true))
     }
 
     /** Wall turrets glow as they approach, then fire one laser at where the ship is right now. */
@@ -738,6 +767,7 @@ class Game(private val prefs: SharedPreferences) {
 
     private fun updateParticles(dt: Float) {
         for (p in particles) {
+            if (p.streak) p.vy -= 14f * dt   // sparks arc down like a sparkler
             p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt
             p.life -= dt
         }

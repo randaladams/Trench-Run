@@ -13,6 +13,7 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.sign
@@ -141,7 +142,8 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                     flying || game.state == Game.State.TITLE,
                     (game.speed - Game.BASE_SPEED) / (Game.MAX_SPEED - Game.BASE_SPEED),
                     flying && game.tractorOn,
-                    if (flying) game.scrape else 0f
+                    if (flying) max(game.scrape, abs(game.wallScrape)) else 0f,
+                    if (game.scrape >= abs(game.wallScrape)) 0f else game.wallScrape
                 )
             }
 

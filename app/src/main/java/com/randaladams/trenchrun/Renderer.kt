@@ -583,11 +583,24 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     }
 
     private fun drawParticles(c: Canvas, g: Game) {
+        val runSpeed = if (g.state == Game.State.PLAYING) g.speed else 0f
         for (p in g.particles) {
             if (p.z <= near) continue
             val s = scaleAt(p.z)
-            fill.color = withAlpha(p.color, p.life / p.maxLife)
-            c.drawCircle(sx(p.x, p.z), sy(p.y, p.z), max(dp(1f), p.size * s), fill)
+            val a = p.life / p.maxLife
+            if (p.streak) {
+                // motion streak: from where the spark was ~30 ms ago (relative to the ship) to where it is
+                val k = 0.03f
+                val tz = max(near + 0.05f, p.z - (p.vz - runSpeed) * k)
+                val hx = sx(p.x, p.z); val hy = sy(p.y, p.z)
+                val tx = sx(p.x - p.vx * k, tz); val ty = sy(p.y - p.vy * k, tz)
+                line.color = withAlpha(p.color, a)
+                line.strokeWidth = max(dp(0.8f), p.size * s)
+                c.drawLine(tx, ty, hx, hy, line)
+            } else {
+                fill.color = withAlpha(p.color, a)
+                c.drawCircle(sx(p.x, p.z), sy(p.y, p.z), max(dp(1f), p.size * s), fill)
+            }
         }
     }
 
@@ -775,7 +788,15 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         } else if (!empty && g.critical && (g.time * 2.5f).toInt() % 2 == 0) {
             text(c, "SHIELD CRITICAL", w / 2f, h * 0.2f, ts * 0.9f, DANGER)
         }
-        if (g.scrape > 0f && (g.time * 5f).toInt() % 2 == 0)
+        if (g.wallScrape != 0f) {   // hot spot where the wingtip grinds the wall
+            val wx = sx(if (g.wallScrape < 0f) -Game.HALF_W else Game.HALF_W, 0.3f); val wy = sy(g.py, 0.3f)
+            val s = scaleAt(0.3f); val a = kotlin.math.abs(g.wallScrape)
+            fill.color = withAlpha(0xFFFF9030.toInt(), 0.25f + 0.35f * a)
+            c.drawCircle(wx, wy, s * 0.35f, fill)
+            fill.color = withAlpha(0xFFFFF0C0.toInt(), 0.6f * a)
+            c.drawCircle(wx, wy, s * 0.12f, fill)
+        }
+        if ((g.scrape > 0f || g.wallScrape != 0f) && (g.time * 5f).toInt() % 2 == 0)
             text(c, "HULL SCRAPING", w / 2f, h * 0.26f, ts * 0.8f, 0xFFFFA040.toInt())
         if (g.critical) {   // pulsing red edge while the alarm sounds
             line.color = withAlpha(DANGER, 0.25f + 0.25f * sin(g.time * 8f))
