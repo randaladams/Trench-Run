@@ -160,7 +160,7 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
             }
 
             // banner ad: free edition, menu screens only (never during a run)
-            val wantBanner = !game.pro && game.state != Game.State.PLAYING
+            val wantBanner = !game.pro && game.state != Game.State.PLAYING && !game.proOffer
             if (wantBanner != bannerShown) {
                 bannerShown = wantBanner
                 post { host.setBannerVisible(wantBanner) }
@@ -307,8 +307,8 @@ class GameView(context: Context, private val host: Host) : SurfaceView(context),
                     renderer.unlockRect.contains(x, y) -> unlockPro()
                     renderer.restoreRect.contains(x, y) ->
                         game.showMessage("Restoring purchases will work once the game is on Google Play", 2.5f)
-                    renderer.offerPanelRect.contains(x, y) -> Unit
-                    else -> game.proOffer = false   // NOT NOW, or a tap outside the panel
+                    renderer.notNowRect.contains(x, y) -> game.proOffer = false
+                    else -> Unit
                 }
                 return
             }

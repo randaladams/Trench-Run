@@ -70,6 +70,7 @@ class Renderer(private val density: Float, private val buildLabel: String) {
     val unlockRect = RectF()
     val restoreRect = RectF()
     val offerPanelRect = RectF()
+    val notNowRect = RectF()
     val scoresRect = RectF()
     val backRect = RectF()
     val clearRect = RectF()
@@ -1219,45 +1220,103 @@ class Renderer(private val density: Float, private val buildLabel: String) {
         if (g.messageTime > 0f) text(c, g.message, w / 2f, top - ts * 0.4f, ts * 0.7f, withAlpha(DANGER, min(1f, g.messageTime * 2f)))
     }
 
-    /** "Trench Run Pro" offer: what Pro includes, an Unlock button, Restore purchases and Not now. */
+    /** Full-screen "Trench Run Pro" page: four feature cards, Unlock, Restore purchase and Not now. */
     private fun drawProOffer(c: Canvas, g: Game) {
-        if (!g.proOffer) { unlockRect.setEmpty(); restoreRect.setEmpty(); offerPanelRect.setEmpty(); return }
+        if (!g.proOffer) { unlockRect.setEmpty(); restoreRect.setEmpty(); notNowRect.setEmpty(); offerPanelRect.setEmpty(); return }
         val gold = 0xFFFFD27A.toInt()
         val ts = max(dp(11f), h / 28f)
-        dim(c, 0.72f)
-        val pw = min(w * 0.62f, dp(620f)); val ph = min(h - bannerSpace(g) - dp(24f), ts * 13.5f)
-        val top = (h - bannerSpace(g) - ph) / 2f
-        offerPanelRect.set(w / 2f - pw / 2f, top, w / 2f + pw / 2f, top + ph)
-        fill.color = 0xF2121620.toInt(); c.drawRoundRect(offerPanelRect, dp(16f), dp(16f), fill)
-        line.color = gold; line.strokeWidth = dp(2.5f); c.drawRoundRect(offerPanelRect, dp(16f), dp(16f), line)
+        val pad = dp(28f)
+        offerPanelRect.set(0f, 0f, w, h)
+        dim(c, 0.9f)
+        // soft gold glow behind the title
+        fill.color = 0x22FFD27A
+        c.drawCircle(w / 2f, h * 0.1f, w * 0.28f, fill)
 
-        var y = top + ts * 1.7f
-        text(c, "TRENCH RUN PRO", w / 2f, y, ts * 1.5f, gold)
-        y += ts * 1.5f
+        text(c, "TRENCH RUN PRO", w / 2f, h * 0.15f, ts * 2.3f, gold)
+        text(c, "Upgrade once. Fly forever.", w / 2f, h * 0.15f + ts * 1.3f, ts * 0.85f, 0xCCFFFFFF.toInt())
+
+        // ---- four feature cards
+        data class Perk(val title: String, val desc: String, val color: Int)
+        val proBadges = ScoreBook.BADGES.count { it.pro }
         val perks = arrayOf(
-            "No ads, ever",
-            "Zen mode: relaxed endless flight",
-            "All ${ScoreBook.BADGES.size} badges (${ScoreBook.BADGES.count { it.pro }} more to earn)",
-            "Continue after a crash without watching an ad"
+            Perk("NO ADS", "No banners and no full-screen ads. Ever.", 0xFFFF7A6A.toInt()),
+            Perk("ZEN MODE", "Relaxed endless flight: steady speed, no turrets, harmless bumps.", 0xFF9FE8D0.toInt()),
+            Perk("ALL BADGES", "Unlock all ${ScoreBook.BADGES.size} badges: $proBadges more to earn.", gold),
+            Perk("FREE CONTINUES", "Crashed? Jump back in once per run without watching an ad.", 0xFF7FB8FF.toInt())
         )
-        val lx = offerPanelRect.left + pw * 0.14f
-        for (p in perks) {
-            fill.color = gold
-            c.drawCircle(lx, y - ts * 0.28f, ts * 0.18f, fill)
-            text(c, p, lx + ts * 0.7f, y, ts * 0.78f, 0xFFE6ECF5.toInt(), Paint.Align.LEFT)
-            y += ts * 1.25f
+        val gap = dp(16f)
+        val cw = (w - pad * 2 - gap * 3) / 4f
+        val ctop = h * 0.29f
+        val ch = h * 0.36f
+        for ((i, pk) in perks.withIndex()) {
+            val x = pad + i * (cw + gap)
+            rect.set(x, ctop, x + cw, ctop + ch)
+            fill.color = withAlpha(pk.color, 0.1f); c.drawRoundRect(rect, dp(14f), dp(14f), fill)
+            line.color = withAlpha(pk.color, 0.7f); line.strokeWidth = dp(2f); c.drawRoundRect(rect, dp(14f), dp(14f), line)
+            val icx = x + cw / 2f; val icy = ctop + ch * 0.27f; val ir = min(cw, ch) * 0.15f
+            drawPerkIcon(c, i, icx, icy, ir, pk.color, g)
+            text(c, pk.title, icx, ctop + ch * 0.56f, min(ts * 0.95f, cw / 9f), pk.color)
+            // description, wrapped to fit the card
+            val ds = min(ts * 0.66f, cw / 13f)
+            txt.textSize = ds
+            val lines = ArrayList<String>()
+            var cur = ""
+            for (wd in pk.desc.split(" ")) {
+                val t = "$cur $wd".trim()
+                if (txt.measureText(t) < cw * 0.86f) cur = t else { lines.add(cur); cur = wd }
+            }
+            if (cur.isNotEmpty()) lines.add(cur)
+            var ly = ctop + ch * 0.7f
+            for (l in lines.take(4)) { text(c, l, icx, ly, ds, 0xDDE6ECF5.toInt()); ly += ds * 1.3f }
         }
-        text(c, "One-time purchase  -  your scores and badges carry over", w / 2f, y + ts * 0.1f, ts * 0.6f, 0x99FFFFFF.toInt())
 
-        val bh = ts * 2f
-        val by = top + ph - bh - ts * 1.9f
-        unlockRect.set(w / 2f - pw * 0.32f, by, w / 2f + pw * 0.32f, by + bh)
-        bigButton(c, unlockRect, "UNLOCK PRO", gold, ts * 1.0f, 0.3f + 0.1f * sin(g.time * 4f))
-        val ly = top + ph - ts * 0.75f
-        text(c, "RESTORE PURCHASE", offerPanelRect.left + pw * 0.27f, ly, ts * 0.62f, 0xAAFFFFFF.toInt())
-        text(c, "NOT NOW", offerPanelRect.right - pw * 0.27f, ly, ts * 0.62f, 0xAAFFFFFF.toInt())
-        restoreRect.set(offerPanelRect.left + pw * 0.05f, ly - ts * 1.1f, offerPanelRect.left + pw * 0.49f, ly + ts * 0.5f)
-        if (g.messageTime > 0f) text(c, g.message, w / 2f, by - ts * 0.4f, ts * 0.62f, withAlpha(gold, min(1f, g.messageTime * 2f)))
+        // ---- unlock
+        val bw = w * 0.42f; val bh = ts * 2.4f
+        val by = ctop + ch + ts * 1.2f
+        unlockRect.set(w / 2f - bw / 2f, by, w / 2f + bw / 2f, by + bh)
+        bigButton(c, unlockRect, "\u2605  UNLOCK PRO", gold, ts * 1.25f, 0.32f + 0.1f * sin(g.time * 4f))
+        text(c, "One-time purchase  -  your scores and badges carry over", w / 2f, by + bh + ts * 0.95f, ts * 0.65f, 0x99FFFFFF.toInt())
+
+        // ---- restore / not now in the bottom corners
+        val sbw = w * 0.22f; val sbh = ts * 1.7f
+        val sby = h - pad * 0.6f - sbh
+        restoreRect.set(pad, sby, pad + sbw, sby + sbh)
+        notNowRect.set(w - pad - sbw, sby, w - pad, sby + sbh)
+        bigButton(c, restoreRect, "RESTORE PURCHASE", 0xFFB8C0CC.toInt(), ts * 0.75f, 0.08f)
+        bigButton(c, notNowRect, "NOT NOW", HUD, ts * 0.8f, 0.1f)
+        if (g.messageTime > 0f) text(c, g.message, w / 2f, sby + sbh * 0.6f, ts * 0.62f, withAlpha(gold, min(1f, g.messageTime * 2f)))
+    }
+
+    private fun drawPerkIcon(c: Canvas, i: Int, x: Float, y: Float, r: Float, col: Int, g: Game) {
+        fill.color = withAlpha(col, 0.18f); c.drawCircle(x, y, r * 1.35f, fill)
+        line.color = col; line.strokeWidth = max(dp(2f), r * 0.14f)
+        when (i) {
+            0 -> {   // "AD" with a slash through it
+                text(c, "AD", x, y + r * 0.35f, r * 0.95f, col)
+                c.drawCircle(x, y, r, line)
+                c.drawLine(x - r * 0.7f, y + r * 0.7f, x + r * 0.7f, y - r * 0.7f, line)
+            }
+            1 -> {   // calm waves
+                for (k in -1..1) {
+                    path.reset()
+                    val yy = y + k * r * 0.45f
+                    path.moveTo(x - r, yy)
+                    path.cubicTo(x - r * 0.5f, yy - r * 0.35f, x - r * 0.1f, yy + r * 0.35f, x + r * 0.3f, yy)
+                    path.cubicTo(x + r * 0.55f, yy - r * 0.2f, x + r * 0.8f, yy - r * 0.2f, x + r, yy)
+                    c.drawPath(path, line)
+                }
+            }
+            2 -> medal(c, x, y, r, ScoreBook.BADGES.first { it.pro }, true)
+            else -> {   // circular "try again" arrow
+                rect.set(x - r * 0.85f, y - r * 0.85f, x + r * 0.85f, y + r * 0.85f)
+                c.drawArc(rect, -60f, 290f, false, line)
+                val a = Math.toRadians(-60.0).toFloat()
+                val ax = x + cos(a) * r * 0.85f; val ay = y + sin(a) * r * 0.85f
+                path.reset()
+                path.moveTo(ax + r * 0.35f, ay - r * 0.05f); path.lineTo(ax - r * 0.1f, ay - r * 0.35f); path.lineTo(ax - r * 0.05f, ay + r * 0.25f); path.close()
+                fill.color = col; c.drawPath(path, fill)
+            }
+        }
     }
 
     /** "Badge earned" banner that slides in at the top. */
